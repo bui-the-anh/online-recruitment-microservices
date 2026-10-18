@@ -121,11 +121,13 @@ thay đổi kết quả xác minh.
 
 ### 3.1 Thành phần
 
-- **Next.js** là scaffold frontend, cấu hình Tailwind CSS và các primitive UI
-  cơ bản; chưa dựng màn hình nghiệp vụ theo đúng yêu cầu chờ giao diện mẫu. Khi
-  triển khai UI, gọi REST API qua Axios (`withCredentials`). Không lưu
-  access/refresh token trong `localStorage`, `sessionStorage` hoặc JavaScript
-  phía trình duyệt.
+- **Next.js** có màn đăng nhập, đăng ký ứng viên và đăng ký nhà tuyển dụng
+  responsive gọi API Gateway qua Axios (`withCredentials`), cùng các primitive
+  UI cơ bản. Đăng ký nhà tuyển dụng lần lượt gọi API tạo tài khoản và lưu hồ sơ
+  công ty; hồ sơ được chờ Admin xác minh. API tải giấy phép kinh doanh chưa được
+  tích hợp. Các màn hình nghiệp vụ khác chưa được triển khai. Token chỉ được
+  lưu trong cookie `HttpOnly`; không lưu access/refresh token trong
+  `localStorage`, `sessionStorage` hoặc JavaScript phía trình duyệt.
 - **NestJS API Gateway** cung cấp REST, xác minh cookie access token, kiểm tra
   role/trạng thái tài khoản rồi chuyển tiếp yêu cầu đồng bộ qua TCP.
 - **Auth Service** quản lý tài khoản, xác thực, refresh token, trạng thái

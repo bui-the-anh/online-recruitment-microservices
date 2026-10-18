@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "Online Recruitment",
-  description: "Frontend scaffold for the online recruitment platform.",
+  title: "CareerLink | Kết nối nghề nghiệp",
+  description: "Kết nối ứng viên và nhà tuyển dụng trên CareerLink.",
 };
 
 export default function RootLayout({
