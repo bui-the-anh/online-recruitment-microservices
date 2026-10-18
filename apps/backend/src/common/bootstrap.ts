@@ -62,7 +62,9 @@ export async function startTcpMicroservice(
     {
       transport: Transport.TCP,
       options: {
-        host: process.env[hostVariable] ?? "127.0.0.1",
+        // Bind all interfaces so Docker service-to-service TCP works.
+        // Clients still connect via AUTH_SERVICE_HOST / JOBS_SERVICE_HOST / ...
+        host: process.env.TCP_BIND_HOST ?? "0.0.0.0",
         port: Number(process.env[portVariable] ?? defaultPort),
       },
     },
@@ -84,22 +86,49 @@ export async function startKafkaMicroservice(
   rootModule: Type<unknown>,
 ): Promise<void> {
   requireRuntimeEnvironment();
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(
-    rootModule,
-    {
-      transport: Transport.KAFKA,
-      options: {
-        client: {
-          clientId: "careerlink-notifications",
-          brokers: (process.env.KAFKA_BROKERS ?? "localhost:9092").split(","),
+  const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
+  const maxAttempts = Number(process.env.KAFKA_CONNECT_ATTEMPTS ?? 20);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const app = await NestFactory.createMicroservice<MicroserviceOptions>(
+        rootModule,
+        {
+          transport: Transport.KAFKA,
+          options: {
+            client: {
+              clientId: "careerlink-notifications",
+              brokers,
+              connectionTimeout: 10_000,
+              requestTimeout: 30_000,
+              retry: { retries: 8, initialRetryTime: 300 },
+            },
+            consumer: {
+              groupId: "careerlink-notifications",
+              allowAutoTopicCreation: true,
+              retry: { retries: 8, initialRetryTime: 300 },
+            },
+            subscribe: { fromBeginning: false },
+          },
         },
-        consumer: { groupId: "careerlink-notifications" },
-      },
-    },
-  );
-  app.useGlobalFilters(new HttpToRpcExceptionFilter());
-  await app.listen();
-  console.log("Bộ nhận sự kiện Kafka đang lắng nghe");
+      );
+      app.useGlobalFilters(new HttpToRpcExceptionFilter());
+      await app.listen();
+      console.log("Bộ nhận sự kiện Kafka đang lắng nghe");
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `Kafka chưa sẵn sàng (lần ${attempt}/${maxAttempts}). Thử lại sau 3s...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Không thể kết nối Kafka broker");
 }
 
 export function reportStartupFailure(serviceName: string, error: unknown): void {

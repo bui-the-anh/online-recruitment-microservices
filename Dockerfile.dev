@@ -1,0 +1,24 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates procps \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/web/package.json ./apps/web/
+
+RUN npm ci
+
+COPY apps/backend/prisma ./apps/backend/prisma
+RUN npm run db:generate --workspace @recruitment/backend
+
+COPY . .
+
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+ENV NEXT_TELEMETRY_DISABLED=1
+
+EXPOSE 3000 3001

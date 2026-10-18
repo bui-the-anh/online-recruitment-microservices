@@ -1,0 +1,173 @@
+# Dev stack: Apache Kafka + Nest microservices + Next.js
+# Watch + volume mount: sửa code local → container reload
+# PostgreSQL: Supabase (DATABASE_URL trong .env)
+x-backend: &backend-base
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+  env_file:
+    - .env
+  environment: &backend-env
+    KAFKA_BROKERS: kafka:9092
+    TCP_BIND_HOST: "0.0.0.0"
+    AUTH_SERVICE_HOST: auth
+    AUTH_SERVICE_PORT: 4001
+    JOBS_SERVICE_HOST: jobs
+    JOBS_SERVICE_PORT: 4002
+    APPLICATIONS_SERVICE_HOST: applications
+    APPLICATIONS_SERVICE_PORT: 4003
+    NOTIFICATIONS_SERVICE_HOST: notifications
+    NOTIFICATIONS_SERVICE_PORT: 4004
+    WEB_ORIGIN: http://localhost:3000
+    CHOKIDAR_USEPOLLING: "true"
+    WATCHPACK_POLLING: "true"
+    KAFKAJS_NO_PARTITIONER_WARNING: "1"
+  volumes:
+    - .:/app
+    - /app/node_modules
+  depends_on:
+    kafka:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  kafka:
+    image: apache/kafka:3.8.1
+    container_name: careerlink-kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    container_name: careerlink-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        for topic in \
+          recruiter.registered recruiter.verified recruiter.verification.rejected \
+          recruiter.suspended recruiter.reactivated job.approved job.rejected \
+          application.submitted application.status.updated
+        do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  auth:
+    <<: *backend-base
+    container_name: careerlink-auth
+    command: npm run dev:auth --workspace @recruitment/backend
+    expose:
+      - "4001"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  jobs:
+    <<: *backend-base
+    container_name: careerlink-jobs
+    command: npm run dev:jobs --workspace @recruitment/backend
+    expose:
+      - "4002"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  applications:
+    <<: *backend-base
+    container_name: careerlink-applications
+    command: npm run dev:applications --workspace @recruitment/backend
+    expose:
+      - "4003"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  notifications:
+    <<: *backend-base
+    container_name: careerlink-notifications
+    command: npm run dev:notifications --workspace @recruitment/backend
+    expose:
+      - "4004"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  gateway:
+    <<: *backend-base
+    container_name: careerlink-gateway
+    command: npm run dev:gateway --workspace @recruitment/backend
+    ports:
+      - "3001:3001"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      auth:
+        condition: service_started
+      jobs:
+        condition: service_started
+      applications:
+        condition: service_started
+      notifications:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: careerlink-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+      WATCHPACK_POLLING_INTERVAL: "1000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/web/.next
+    command: npm run dev --workspace @recruitment/web
+    depends_on:
+      - gateway
+    restart: unless-stopped

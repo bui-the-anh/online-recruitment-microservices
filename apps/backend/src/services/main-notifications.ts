@@ -7,15 +7,16 @@ import {
   startTcpMicroservice,
 } from "../common/bootstrap";
 
-void Promise.all([
-  startTcpMicroservice(
-    NotificationsModule,
-    "Notification Service",
-    "NOTIFICATIONS_SERVICE_HOST",
-    "NOTIFICATIONS_SERVICE_PORT",
-    4004,
-  ),
-  startKafkaMicroservice(NotificationsKafkaModule),
-]).catch((error: unknown) =>
+void startTcpMicroservice(
+  NotificationsModule,
+  "Notification Service",
+  "NOTIFICATIONS_SERVICE_HOST",
+  "NOTIFICATIONS_SERVICE_PORT",
+  4004,
+).catch((error: unknown) =>
   reportStartupFailure("Notification Service", error),
+);
+
+void startKafkaMicroservice(NotificationsKafkaModule).catch((error: unknown) =>
+  reportStartupFailure("Notification Kafka consumer", error),
 );
