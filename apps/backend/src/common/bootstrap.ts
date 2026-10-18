@@ -104,6 +104,12 @@ export async function startKafkaMicroservice(
 
 export function reportStartupFailure(serviceName: string, error: unknown): void {
   const kind = error instanceof Error ? error.name : "UnknownError";
+  if (kind.startsWith("KafkaJS")) {
+    console.error(
+      `${serviceName} không thể kết nối Kafka broker. Hãy kiểm tra KAFKA_BROKERS và đảm bảo broker Kafka đang chạy, có thể truy cập từ máy này.`,
+    );
+    process.exit(1);
+  }
   console.error(
     `${serviceName} không thể khởi động (${kind}). Hãy kiểm tra DATABASE_URL, JWT_SECRET và khả năng kết nối cơ sở dữ liệu.`,
   );

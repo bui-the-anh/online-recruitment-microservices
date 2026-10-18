@@ -116,7 +116,6 @@ thay đổi kết quả xác minh.
 │           ├── notifications/       # Lưu thông báo, Kafka consumer
 │           ├── events/              # Kafka producer
 │           └── services/            # Entry point cho từng tiến trình Nest
-├── docker-compose.yml               # Kafka-compatible Redpanda cho phát triển
 └── README.md
 ```
 
@@ -135,7 +134,7 @@ thay đổi kết quả xác minh.
 - **Application Service** quản lý hồ sơ ứng tuyển, CV theo từng đơn và chuyển
   trạng thái hồ sơ.
 - **Notification Service** lưu thông báo, nhận sự kiện Kafka và phục vụ truy vấn.
-- **Apache Kafka-compatible Redpanda** truyền sự kiện bất đồng bộ giữa các
+- **Apache Kafka-compatible broker** truyền sự kiện bất đồng bộ giữa các
   service. Các topic hiện dùng: `recruiter.registered`, `recruiter.verified`,
   `recruiter.verification.rejected`, `recruiter.suspended`,
   `recruiter.reactivated`, `job.approved`, `job.rejected`,
@@ -263,7 +262,8 @@ khi dùng với CV thật.
 - Node.js 20 trở lên và npm.
 - Một PostgreSQL database truy cập được; Supabase pooler có thể cấu hình qua
   `DATABASE_URL`.
-- Docker Compose để chạy Kafka-compatible Redpanda.
+- Một Kafka-compatible broker đang chạy và truy cập được từ máy chạy ứng dụng.
+  Backend dùng broker này để truyền sự kiện bất đồng bộ.
 
 ### 6.2 Thiết lập biến môi trường
 
@@ -288,18 +288,23 @@ Không đặt URL thật trong `.env.example`. Next.js mặc định gọi Gatew
 `http://localhost:3001/api`; nếu đổi địa chỉ, cấu hình
 `NEXT_PUBLIC_API_URL` trong môi trường chạy Next.js.
 
-### 6.3 Migration, Kafka và khởi chạy
+### 6.3 Migration và khởi chạy
 
 ```bash
 npm run db:generate
 npm run db:deploy --workspace @recruitment/backend
-docker compose up -d redpanda
-npm run dev
 ```
 
 `db:deploy` áp dụng các migration đã được tạo và phù hợp với Supabase/môi trường
 triển khai. Chỉ dùng `npm run db:migrate --workspace @recruitment/backend` cho
 môi trường phát triển local cần tạo migration mới.
+
+Ứng dụng Next.js và các tiến trình NestJS chạy trực tiếp trên máy local; dữ liệu
+PostgreSQL được lưu trên Supabase. Cấu hình `KAFKA_BROKERS` trong `.env` trỏ tới
+một Kafka-compatible broker đã được cấp sẵn và truy cập được. Repo không cài
+hay tự khởi chạy broker; cần có broker khả dụng để Notification Service khởi
+động và các nghiệp vụ phát sự kiện hoạt động đầy đủ. Đây là dịch vụ riêng, không
+phải PostgreSQL và không được khởi chạy cùng ứng dụng.
 
 Để tạo Admin ban đầu, đặt `ADMIN_EMAIL`, `ADMIN_FULL_NAME` và mật khẩu mạnh từ
 12 ký tự trong `.env`, sau đó chạy:
@@ -312,8 +317,9 @@ Seed chỉ tạo tài khoản Admin nếu email chưa tồn tại; không tự n
 một tài khoản đang có. Sau khi seed, xóa các giá trị `ADMIN_*` khỏi môi trường
 runtime.
 
+Khởi chạy frontend và toàn bộ backend từ thư mục gốc:
+
 ```bash
-docker compose up -d redpanda
 npm run dev
 ```
 
