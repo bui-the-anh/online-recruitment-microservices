@@ -246,6 +246,7 @@ token trong body từ Gateway.
 | `PATCH` | `/api/notifications/:id/read` | Đã đăng nhập | Đánh dấu thông báo của mình đã đọc. |
 | `GET` | `/api/dashboard` | Đã đăng nhập | Thống kê tổng hợp theo vai trò. |
 | `GET` | `/api/admin/recruiters` | Admin | Danh sách Recruiter và tình trạng xác minh. |
+| `GET` | `/api/admin/audit-logs` | Admin | Nhật ký thao tác quản trị (xác minh, khóa, duyệt tin). |
 | `GET` | `/api/admin/jobs` | Admin | Hàng đợi tin; mặc định lọc `PENDING`. |
 | `PATCH` | `/api/admin/recruiters/:id/verification` | Admin | Xác minh hoặc từ chối xác minh. |
 | `PATCH` | `/api/admin/recruiters/:id/account-status` | Admin | Khóa hoặc mở khóa tài khoản. |

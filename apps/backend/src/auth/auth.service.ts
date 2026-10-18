@@ -257,6 +257,20 @@ export class AuthService {
     });
   }
 
+  async listAuditLogs(actor: Actor) {
+    if (actor.role !== Role.ADMIN) {
+      throw new UnauthorizedException("Bạn không có quyền thực hiện thao tác này");
+    }
+    return this.prisma.auditLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        actor: { select: { id: true, email: true, fullName: true, role: true } },
+        target: { select: { id: true, email: true, fullName: true, role: true } },
+      },
+    });
+  }
+
   async updateVerification(input: {
     actor: Actor;
     id: string;

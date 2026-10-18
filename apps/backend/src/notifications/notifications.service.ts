@@ -112,8 +112,17 @@ export class NotificationsService {
   }
 
   async markRead(input: { userId: string; id: string }) {
+    const id = input.id?.trim();
+    if (
+      !id ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        id,
+      )
+    ) {
+      throw new BadRequestException("Mã thông báo không hợp lệ");
+    }
     const notification = await this.prisma.notification.findFirst({
-      where: { id: input.id, userId: input.userId },
+      where: { id, userId: input.userId },
     });
     if (!notification) throw new NotFoundException("Không tìm thấy thông báo");
     return this.prisma.notification.update({

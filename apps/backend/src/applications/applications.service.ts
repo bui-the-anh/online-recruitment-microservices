@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import {
   JobStatus,
   Role,
 } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { Actor } from "../common/bootstrap";
 import { KafkaEventsService } from "../events/kafka-events.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -42,22 +44,34 @@ export class ApplicationsService {
       include: { recruiter: { select: { fullName: true } } },
     });
     if (!job) throw new NotFoundException("Không tìm thấy tin tuyển dụng đang mở");
-    const application = await this.prisma.application.create({
-      data: {
-        jobId,
+    try {
+      const application = await this.prisma.application.create({
+        data: {
+          jobId,
+          candidateId: input.actor.id,
+          cvUrl,
+          coverLetter: input.application.coverLetter,
+        },
+      });
+      await this.events.publish("application.submitted", {
+        applicationId: application.id,
+        jobId: job.id,
+        jobTitle: job.title,
+        recruiterId: job.recruiterId,
         candidateId: input.actor.id,
-        cvUrl,
-        coverLetter: input.application.coverLetter,
-      },
-    });
-    await this.events.publish("application.submitted", {
-      applicationId: application.id,
-      jobId: job.id,
-      jobTitle: job.title,
-      recruiterId: job.recruiterId,
-      candidateId: input.actor.id,
-    });
-    return application;
+      });
+      return application;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictException(
+          "Bạn đã nộp hồ sơ cho tin tuyển dụng này rồi",
+        );
+      }
+      throw error;
+    }
   }
 
   async list(actor: Actor) {
@@ -93,7 +107,18 @@ export class ApplicationsService {
       });
     }
     if (actor.role === Role.ADMIN) {
+      // Admin theo dõi trạng thái đơn; không được xem CV (README §1.6).
       return this.prisma.application.findMany({
+        select: {
+          id: true,
+          jobId: true,
+          candidateId: true,
+          coverLetter: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          job: { select: { id: true, title: true, recruiterId: true } },
+        },
         orderBy: { createdAt: "desc" },
         take: 100,
       });

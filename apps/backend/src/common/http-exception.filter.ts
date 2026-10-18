@@ -5,6 +5,7 @@ import {
   HttpException,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { extractRpcError } from "./rpc-error";
 
 const statusMessages: Record<number, { code: string; message: string }> = {
   400: { code: "DU_LIEU_KHONG_HOP_LE", message: "Dữ liệu yêu cầu không hợp lệ" },
@@ -16,59 +17,47 @@ const statusMessages: Record<number, { code: string; message: string }> = {
   500: { code: "LOI_HE_THONG", message: "Hệ thống đang gặp sự cố, vui lòng thử lại sau" },
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function vietnameseMessage(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return /[à-ỹđ]/i.test(value) ? value : undefined;
-  }
-  if (Array.isArray(value)) {
-    const messages = value
-      .map(vietnameseMessage)
-      .filter((message): message is string => Boolean(message));
-    return messages.length ? messages.join(". ") : undefined;
-  }
-  if (isRecord(value) && "message" in value) {
-    return vietnameseMessage(value.message);
-  }
-  return undefined;
-}
-
 @Catch()
 export class VietnameseHttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
     const request = http.getRequest<Request>();
-    const remoteStatus =
-      isRecord(exception) && typeof exception.statusCode === "number"
-        ? exception.statusCode
-        : isRecord(exception) && typeof exception.status === "number"
-          ? exception.status
-          : undefined;
-    const prismaStatus =
-      isRecord(exception) && exception.code === "P2002"
-        ? 409
-        : isRecord(exception) && exception.code === "P2025"
-          ? 404
-          : undefined;
+
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : remoteStatus ?? prismaStatus ?? 500;
+        : extractRpcError(exception).statusCode;
+
     const fallback = statusMessages[status] ?? {
       code: "YEU_CAU_KHONG_HOP_LE",
       message: "Không thể xử lý yêu cầu này",
     };
-    const source =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : isRecord(exception)
-          ? exception
-          : undefined;
-    const message = vietnameseMessage(source) ?? fallback.message;
+
+    let message = fallback.message;
+    if (exception instanceof HttpException) {
+      const body = exception.getResponse();
+      if (typeof body === "string" && /[à-ỹđ]/i.test(body)) {
+        message = body;
+      } else if (
+        typeof body === "object" &&
+        body !== null &&
+        "message" in body
+      ) {
+        const nested = (body as { message: unknown }).message;
+        if (typeof nested === "string" && /[à-ỹđ]/i.test(nested)) {
+          message = nested;
+        } else if (Array.isArray(nested)) {
+          const joined = nested
+            .filter((item): item is string => typeof item === "string")
+            .join(". ");
+          if (/[à-ỹđ]/i.test(joined)) message = joined;
+        }
+      }
+    } else {
+      const remote = extractRpcError(exception);
+      if (/[à-ỹđ]/i.test(remote.message)) message = remote.message;
+    }
 
     response.status(status).json({
       success: false,

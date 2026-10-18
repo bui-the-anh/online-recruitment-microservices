@@ -24,6 +24,7 @@ import {
 import { Public, Roles } from "./common/decorators";
 import { Actor, startHttpApplication } from "./common/bootstrap";
 import { AuthenticatedRequest } from "./common/guards";
+import { toHttpException } from "./common/rpc-error";
 import { PrismaService } from "./prisma/prisma.service";
 
 @Controller()
@@ -38,13 +39,19 @@ export class GatewayController {
     private readonly prisma: PrismaService,
   ) {}
 
-  private request<T>(
+  private async request<T>(
     client: ClientProxy,
     pattern: object,
     data: unknown,
     timeoutMs = 10000,
   ): Promise<T> {
-    return firstValueFrom(client.send<T>(pattern, data).pipe(timeout(timeoutMs)));
+    try {
+      return await firstValueFrom(
+        client.send<T>(pattern, data).pipe(timeout(timeoutMs)),
+      );
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   private setSessionCookies(
@@ -315,6 +322,16 @@ export class GatewayController {
   @Get("api/admin/recruiters")
   listRecruiters() {
     return this.request(this.auth, { cmd: "admin.recruiters.list" }, {});
+  }
+
+  @Roles(Role.ADMIN)
+  @Get("api/admin/audit-logs")
+  listAuditLogs(@Req() request: AuthenticatedRequest) {
+    return this.request(
+      this.auth,
+      { cmd: "admin.audit-logs.list" },
+      this.actor(request),
+    );
   }
 
   @Roles(Role.ADMIN)

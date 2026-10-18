@@ -67,6 +67,11 @@ export class AuthMessageController {
     return this.auth.listRecruiters();
   }
 
+  @MessagePattern({ cmd: "admin.audit-logs.list" })
+  listAuditLogs(@Payload() actor: Parameters<AuthService["listAuditLogs"]>[0]) {
+    return this.auth.listAuditLogs(actor);
+  }
+
   @MessagePattern({ cmd: "admin.recruiters.verification" })
   updateVerification(@Payload() payload: Parameters<AuthService["updateVerification"]>[0]) {
     return this.auth.updateVerification(payload);
