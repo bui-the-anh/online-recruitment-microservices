@@ -1,0 +1,29 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.15
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+      - "19644:9644"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--brokers=localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

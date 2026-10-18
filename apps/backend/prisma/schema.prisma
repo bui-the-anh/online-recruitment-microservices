@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+}
+
+enum JobStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  TEMPORARY
+}
+
+enum ApplicationStatus {
+  APPLIED
+  VIEWED
+  INTERVIEW
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id                 String              @id @default(uuid()) @db.Uuid
+  email              String              @unique @db.VarChar(320)
+  passwordHash       String              @map("password_hash") @db.VarChar(255)
+  fullName           String              @map("full_name") @db.VarChar(160)
+  role               Role
+  accountStatus      AccountStatus       @default(ACTIVE) @map("account_status")
+  verificationStatus VerificationStatus? @map("verification_status")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  candidateProfile CandidateProfile?
+  company          Company?
+  jobs             Job[]                @relation("JobRecruiter")
+  applications     Application[]        @relation("CandidateApplications")
+  notifications    Notification[]
+  auditEntries     AuditLog[]            @relation("AuditActor")
+  auditTargets     AuditLog[]            @relation("AuditTarget")
+  refreshTokens    RefreshToken[]
+
+  @@map("users")
+}
+
+model CandidateProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  phone     String?  @db.VarChar(32)
+  location  String?  @db.VarChar(160)
+  headline  String?  @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_profiles")
+}
+
+model Company {
+  id                  String   @id @default(uuid()) @db.Uuid
+  recruiterId         String   @unique @map("recruiter_id") @db.Uuid
+  name                String   @db.VarChar(200)
+  description         String?  @db.Text
+  website             String?  @db.VarChar(500)
+  industry            String?  @db.VarChar(120)
+  location            String?  @db.VarChar(160)
+  verificationDetails String?  @map("verification_details") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  recruiter User  @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  jobs      Job[]
+
+  @@map("companies")
+}
+
+model Job {
+  id             String         @id @default(uuid()) @db.Uuid
+  companyId      String         @map("company_id") @db.Uuid
+  recruiterId    String         @map("recruiter_id") @db.Uuid
+  title          String         @db.VarChar(200)
+  description    String         @db.Text
+  requirements   String?        @db.Text
+  location       String         @db.VarChar(160)
+  employmentType EmploymentType @map("employment_type")
+  salaryMin      Decimal?       @map("salary_min") @db.Decimal(12, 2)
+  salaryMax      Decimal?       @map("salary_max") @db.Decimal(12, 2)
+  currency       String         @default("VND") @db.VarChar(3)
+  status         JobStatus      @default(PENDING)
+  rejectionNote  String?        @map("rejection_note") @db.Text
+  publishedAt    DateTime?      @map("published_at") @db.Timestamptz(6)
+  expiresAt      DateTime?      @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  recruiter   User          @relation("JobRecruiter", fields: [recruiterId], references: [id], onDelete: Restrict)
+  applications Application[]
+
+  @@index([status, createdAt])
+  @@index([companyId])
+  @@index([recruiterId, status])
+  @@map("jobs")
+}
+
+model Application {
+  id          String            @id @default(uuid()) @db.Uuid
+  jobId       String            @map("job_id") @db.Uuid
+  candidateId String            @map("candidate_id") @db.Uuid
+  cvUrl       String            @map("cv_url") @db.VarChar(2048)
+  coverLetter String?           @map("cover_letter") @db.Text
+  status      ApplicationStatus @default(APPLIED)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  job       Job  @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  candidate User @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Restrict)
+
+  @@unique([jobId, candidateId])
+  @@index([candidateId, createdAt])
+  @@index([jobId, status])
+  @@map("applications")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(80)
+  title     String   @db.VarChar(200)
+  body      String   @db.Text
+  payload   Json?
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @map("actor_id") @db.Uuid
+  targetId   String?  @map("target_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(80)
+  entityId   String   @map("entity_id") @db.VarChar(100)
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor  User  @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  target User? @relation("AuditTarget", fields: [targetId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}

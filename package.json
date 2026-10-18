@@ -1,0 +1,19 @@
+{
+  "name": "online-recruitment-microservices",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n web,backend \"npm run dev --workspace @recruitment/web\" \"npm run dev --workspace @recruitment/backend\"",
+    "build": "npm run build --workspace @recruitment/backend && npm run build --workspace @recruitment/web",
+    "dev:web": "npm run dev --workspace @recruitment/web",
+    "dev:backend": "npm run dev --workspace @recruitment/backend",
+    "db:generate": "npm run db:generate --workspace @recruitment/backend",
+    "db:migrate": "npm run db:migrate --workspace @recruitment/backend",
+    "db:deploy": "npm run db:deploy --workspace @recruitment/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

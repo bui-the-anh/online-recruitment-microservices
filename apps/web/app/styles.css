@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --background: 150 20% 98%;
+    --foreground: 164 28% 13%;
+    --primary: 159 60% 22%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 145 15% 94%;
+    --muted-foreground: 153 8% 42%;
+    --border: 145 12% 88%;
+    --card: 0 0% 100%;
+    --card-foreground: 164 28% 13%;
+    --radius: 0.55rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+}
