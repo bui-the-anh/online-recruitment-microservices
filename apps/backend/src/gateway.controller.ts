@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,10 +11,15 @@ import {
   Put,
   Req,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { ClientProxy } from "@nestjs/microservices";
 import { Role } from "@prisma/client";
 import type { Response } from "express";
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { firstValueFrom, timeout } from "rxjs";
 import {
   APPLICATIONS_SERVICE,
@@ -26,6 +32,21 @@ import { Actor, startHttpApplication } from "./common/bootstrap";
 import { AuthenticatedRequest } from "./common/guards";
 import { toHttpException } from "./common/rpc-error";
 import { PrismaService } from "./prisma/prisma.service";
+import { uploadCvToSupabase } from "./common/supabase-storage";
+
+type UploadedCvFile = {
+  originalname: string;
+  size: number;
+  mimetype: string;
+  path: string;
+};
+
+const CV_MIME = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+const CV_MAX_BYTES = 5 * 1024 * 1024;
 
 @Controller()
 export class GatewayController {
@@ -196,9 +217,15 @@ export class GatewayController {
   }
 
   @Public()
-  @Get("api/jobs/:id")
-  getJob(@Param("id") id: string) {
-    return this.request(this.jobs, { cmd: "jobs.get" }, { id });
+  @Get("api/companies/featured")
+  featuredCompanies(@Query("limit") limit?: string) {
+    return this.request(this.jobs, { cmd: "companies.featured" }, { limit });
+  }
+
+  @Public()
+  @Get("api/companies")
+  listCompanies(@Query() query: Record<string, string | undefined>) {
+    return this.request(this.jobs, { cmd: "companies.list" }, query);
   }
 
   @Roles(Role.RECRUITER)
@@ -223,6 +250,25 @@ export class GatewayController {
     );
   }
 
+  @Public()
+  @Get("api/companies/:id")
+  getCompanyPublic(
+    @Param("id") id: string,
+    @Query("category") category?: string,
+  ) {
+    return this.request(
+      this.jobs,
+      { cmd: "companies.get-public" },
+      { id, category },
+    );
+  }
+
+  @Public()
+  @Get("api/jobs/:id")
+  getJob(@Param("id") id: string) {
+    return this.request(this.jobs, { cmd: "jobs.get" }, { id });
+  }
+
   @Roles(Role.RECRUITER)
   @Post("api/jobs")
   createJob(
@@ -239,11 +285,11 @@ export class GatewayController {
   @Get("api/recruiter/jobs")
   recruiterJobs(
     @Req() request: AuthenticatedRequest,
-    @Query("page") page?: string,
+    @Query() query: Record<string, string | undefined>,
   ) {
     return this.request(this.jobs, { cmd: "jobs.recruiter-list" }, {
       actor: this.actor(request),
-      page,
+      ...query,
     });
   }
 
@@ -262,6 +308,64 @@ export class GatewayController {
   }
 
   @Roles(Role.CANDIDATE)
+  @Post("api/uploads/cv")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      dest: join(process.cwd(), "uploads"),
+      limits: { fileSize: CV_MAX_BYTES },
+      fileFilter: (_request, file, callback) => {
+        if (!CV_MIME.has(file.mimetype)) {
+          callback(
+            new BadRequestException(
+              "Chỉ chấp nhận CV định dạng PDF hoặc DOCX",
+            ) as unknown as Error,
+            false,
+          );
+          return;
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async uploadCv(
+    @Req() request: AuthenticatedRequest,
+    @UploadedFile() file?: UploadedCvFile,
+  ) {
+    if (!file?.path) {
+      throw new BadRequestException("Vui lòng chọn tệp CV để tải lên");
+    }
+    const uploadsDir = join(process.cwd(), "uploads");
+    if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+    try {
+      const buffer = readFileSync(file.path);
+      if (!buffer.length) {
+        throw new BadRequestException("Tệp CV trống");
+      }
+      const uploaded = await uploadCvToSupabase({
+        buffer,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        candidateId: this.actor(request).id,
+      });
+      return {
+        url: uploaded.url,
+        path: uploaded.path,
+        bucket: uploaded.bucket,
+        fileName: file.originalname,
+        size: file.size,
+        mimeType: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      };
+    } finally {
+      try {
+        unlinkSync(file.path);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+  }
+
+  @Roles(Role.CANDIDATE)
   @Post("api/applications")
   apply(
     @Req() request: AuthenticatedRequest,
@@ -275,12 +379,34 @@ export class GatewayController {
 
   @Roles(Role.CANDIDATE, Role.RECRUITER, Role.ADMIN)
   @Get("api/applications")
-  listApplications(@Req() request: AuthenticatedRequest) {
+  listApplications(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    const actor = this.actor(request);
+    if (actor.role === Role.RECRUITER) {
+      return this.request(this.applications, { cmd: "applications.list" }, {
+        actor,
+        ...query,
+      });
+    }
     return this.request(
       this.applications,
       { cmd: "applications.list" },
-      this.actor(request),
+      actor,
     );
+  }
+
+  @Roles(Role.CANDIDATE, Role.RECRUITER, Role.ADMIN)
+  @Get("api/applications/:id")
+  getApplication(
+    @Req() request: AuthenticatedRequest,
+    @Param("id") id: string,
+  ) {
+    return this.request(this.applications, { cmd: "applications.get" }, {
+      actor: this.actor(request),
+      id,
+    });
   }
 
   @Roles(Role.RECRUITER)
@@ -320,8 +446,8 @@ export class GatewayController {
 
   @Roles(Role.ADMIN)
   @Get("api/admin/recruiters")
-  listRecruiters() {
-    return this.request(this.auth, { cmd: "admin.recruiters.list" }, {});
+  listRecruiters(@Query() query: Record<string, string | undefined>) {
+    return this.request(this.auth, { cmd: "admin.recruiters.list" }, query);
   }
 
   @Roles(Role.ADMIN)
@@ -336,10 +462,14 @@ export class GatewayController {
 
   @Roles(Role.ADMIN)
   @Get("api/admin/jobs")
-  adminJobs(@Query("status") status?: string) {
-    return this.request(this.jobs, { cmd: "admin.jobs.queue" }, {
-      status,
-    });
+  adminJobs(@Query() query: Record<string, string | undefined>) {
+    return this.request(this.jobs, { cmd: "admin.jobs.queue" }, query);
+  }
+
+  @Roles(Role.ADMIN)
+  @Get("api/admin/recruiters/:id")
+  getRecruiterDetail(@Param("id") id: string) {
+    return this.request(this.auth, { cmd: "admin.recruiters.get" }, { id });
   }
 
   @Roles(Role.ADMIN)

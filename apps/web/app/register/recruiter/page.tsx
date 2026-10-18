@@ -1,28 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
 import Link from "next/link";
+import { FormEvent, useRef, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
-  BriefcaseBusiness,
+  Briefcase,
   Building2,
   Check,
   Eye,
   EyeOff,
-  FileCheck2,
+  FileUp,
+  Hash,
   LoaderCircle,
-  LockKeyhole,
+  Lock,
   Mail,
   MapPin,
+  Network,
   Phone,
   ShieldCheck,
-  Sparkles,
+  UserPlus,
   UserRound,
   Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { api, formatApiError } from "@/lib/api";
 
 type RegisterResponse = {
@@ -42,6 +42,29 @@ type CompanyInput = {
   description: string;
   verificationDetails: string;
 };
+
+const COMPANY_SIZES = [
+  "1 - 10 nhân sự",
+  "11 - 50 nhân sự",
+  "51 - 200 nhân sự",
+  "201 - 500 nhân sự",
+  "500+ nhân sự",
+];
+
+const JOB_TITLES = [
+  "Giám đốc / Chủ doanh nghiệp",
+  "Trưởng phòng Nhân sự",
+  "Chuyên viên Tuyển dụng",
+  "Quản lý / Trưởng bộ phận",
+  "Khác",
+];
+
+const ACCEPTED_FILE_TYPES = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+];
+const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
 const fieldClass =
   "h-12 w-full rounded-lg border border-[#dfe5ef] bg-[#eff4ff] px-4 text-sm text-[#172033] outline-none transition placeholder:text-[#8b96a8] focus:border-[#0f52ba] focus:bg-white focus:ring-4 focus:ring-[#0f52ba]/10";
@@ -82,31 +105,43 @@ function FormField({
   );
 }
 
-function SectionTitle({ number, children }: { number: string; children: React.ReactNode }) {
+function SectionTitle({
+  number,
+  children,
+  badge,
+}: {
+  number: string;
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+}) {
   return (
-    <h2 className="flex items-center gap-2.5 text-sm font-bold text-[#172033]">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#dce9ff] text-xs font-bold text-[#0f52ba]">
-        {number}
-      </span>
-      {children}
-    </h2>
+    <div className="flex flex-wrap items-center gap-2.5">
+      <h2 className="flex items-center gap-2.5 text-sm font-bold text-[#172033]">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#dce9ff] text-xs font-bold text-[#0f52ba]">
+          {number}
+        </span>
+        {children}
+      </h2>
+      {badge}
+    </div>
   );
 }
 
 export default function RecruiterRegisterPage() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [taxId, setTaxId] = useState("");
-  const [industry, setIndustry] = useState("");
+  const [companySize, setCompanySize] = useState("");
   const [location, setLocation] = useState("");
-  const [description, setDescription] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [companyInput, setCompanyInput] = useState<CompanyInput | null>(null);
@@ -114,6 +149,23 @@ export default function RecruiterRegisterPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
+
+  function handleLicenseFile(file: File | null) {
+    if (!file) {
+      setLicenseFile(null);
+      return;
+    }
+    if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
+      setError("Chỉ chấp nhận tệp PDF, PNG hoặc JPG.");
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      setError("Dung lượng tệp tối đa 15MB.");
+      return;
+    }
+    setError("");
+    setLicenseFile(file);
+  }
 
   async function saveCompanyProfile(input: CompanyInput) {
     setError("");
@@ -148,14 +200,18 @@ export default function RecruiterRegisterPage() {
 
     const company: CompanyInput = {
       name: companyName.trim(),
-      industry,
+      industry: "Chưa cập nhật",
       location: location.trim(),
-      description: description.trim(),
+      description: `Quy mô: ${companySize}`,
       verificationDetails: [
         `Mã số thuế: ${taxId.trim()}`,
+        `Quy mô nhân sự: ${companySize}`,
         `Người đại diện: ${fullName.trim()}`,
         `Chức vụ: ${jobTitle}`,
         `Số điện thoại: ${phone.trim()}`,
+        licenseFile
+          ? `Tài liệu GPKD (chờ tải lên storage): ${licenseFile.name}`
+          : "Tài liệu GPKD: chưa đính kèm (bổ sung sau)",
       ].join("\n"),
     };
 
@@ -182,26 +238,26 @@ export default function RecruiterRegisterPage() {
   const isBusy = isSubmitting || isSavingCompany;
 
   return (
-    <div className="min-h-screen bg-[#f8f9ff] text-[#172033]">
-      <header className="h-16 border-b border-[#e9edf5] bg-white/90">
-        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F8F9FF] text-[#0B1C30]">
+      <header className="border-b border-[#E8ECF4] bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
             className="inline-flex items-center gap-2.5"
-            aria-label="CareerLink trang chủ"
+            aria-label="Tuyển dụng nhanh"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0f52ba] text-white shadow-sm">
-              <BriefcaseBusiness aria-hidden="true" size={19} />
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#003C90] text-white shadow-sm">
+              <Network aria-hidden="true" size={18} />
             </span>
-            <span className="text-lg font-bold tracking-tight text-[#14294c]">
-              Career<span className="text-[#0f52ba]">Link</span>
+            <span className="text-lg font-bold tracking-tight text-[#003C90]">
+              Tuyển dụng nhanh
             </span>
           </Link>
-          <p className="text-sm text-[#68758b]">
+          <p className="hidden text-sm text-[#68758B] sm:block">
             Đã có tài khoản?{" "}
             <Link
               href="/"
-              className="font-semibold text-[#0f52ba] hover:text-[#0c469f]"
+              className="font-semibold text-[#0F52BA] hover:text-[#003C90]"
             >
               Đăng nhập ngay
             </Link>
@@ -209,67 +265,66 @@ export default function RecruiterRegisterPage() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[0.78fr_1.12fr] lg:items-start lg:gap-12 lg:px-8 lg:py-8">
-        <aside className="relative isolate hidden min-h-[534px] overflow-hidden rounded-xl bg-[#0f52ba] p-8 text-white shadow-[0_20px_55px_-38px_rgba(25,43,77,0.4)] lg:flex lg:flex-col xl:p-10">
-          <div className="pointer-events-none absolute -right-12 -top-16 -z-10 h-56 w-56 rounded-full bg-[#89f5e7]/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-12 -z-10 h-48 w-48 rounded-full bg-[#1d59c1]/70 blur-3xl" />
+      <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[0.78fr_1.12fr] lg:items-start lg:gap-8 lg:px-8 lg:py-8">
+        <aside className="relative isolate hidden min-h-[640px] overflow-hidden rounded-2xl bg-gradient-to-b from-[#003C90] via-[#0F52BA] to-[#0A3A7A] p-8 text-white shadow-[0_24px_60px_-28px_rgba(0,60,144,0.55)] lg:flex lg:flex-col xl:p-10">
+          <div className="pointer-events-none absolute -right-12 -top-16 -z-10 h-56 w-56 rounded-full bg-[#89F5E7]/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-12 -z-10 h-48 w-48 rounded-full bg-[#B0C6FF]/15 blur-3xl" />
 
-          <div className="inline-flex items-center gap-2 text-sm font-semibold">
-            <BriefcaseBusiness aria-hidden="true" size={17} />
-            Tuyển dụng nhanh
-          </div>
-          <h1 className="mt-7 text-2xl font-bold leading-snug xl:text-[28px]">
-            Đồng hành tuyển dụng cùng 1,200+ doanh nghiệp dẫn đầu
+          <h1 className="text-[28px] font-bold leading-snug tracking-tight xl:text-[30px]">
+            Đồng hành tuyển dụng cùng{" "}
+            <span className="text-[#89F5E7]">1,200+ Doanh nghiệp dẫn đầu</span>
           </h1>
-          <p className="mt-3 text-xs leading-5 text-blue-100">
-            Mở rộng lựa chọn ứng viên, quản lý tin tuyển dụng và xây dựng đội
-            ngũ phù hợp cho hành trình phát triển của doanh nghiệp.
+          <p className="mt-3 text-xs leading-5 text-blue-100/90">
+            Mở rộng lựa chọn ứng viên, quản lý tin tuyển dụng chuẩn hóa và xây
+            dựng tài khoản doanh nghiệp chuyên nghiệp trên nền tảng.
           </p>
 
-          <div className="mt-6 rounded-xl border border-white/15 bg-gradient-to-br from-[#0b3878] via-[#1262bd] to-[#0a2d60] p-5">
-            <div className="flex aspect-[1.8] flex-col justify-between rounded-lg border border-white/10 bg-[radial-gradient(ellipse_at_50%_0%,rgba(137,245,231,0.25),transparent_55%),linear-gradient(145deg,#0d3976,#071f47)] p-4">
-              <div className="flex items-center justify-between">
-                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-blue-100">
-                  CAREERLINK TALENT
+          <div className="relative mt-7 overflow-hidden rounded-xl border border-white/15 shadow-lg">
+            <div
+              className="aspect-[16/11] bg-cover bg-center"
+              style={{
+                backgroundImage:
+                  "url(https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=900&q=80)",
+              }}
+              role="img"
+              aria-label="Đội ngũ doanh nghiệp họp tuyển dụng"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#003C90]/70 via-transparent to-transparent" />
+            <div className="absolute bottom-3 left-3 right-3">
+              <div className="inline-flex max-w-full items-center gap-2 rounded-lg bg-[#006A61] px-3 py-2 text-[11px] font-semibold leading-4 text-white shadow-md">
+                <ShieldCheck aria-hidden="true" size={14} className="shrink-0" />
+                <span>
+                  Hệ thống xác thực doanh nghiệp 2 lớp chuẩn ISO/IEC
                 </span>
-                <Sparkles aria-hidden="true" size={17} className="text-[#89f5e7]" />
               </div>
-              <div className="flex items-end justify-between gap-2">
-                {[38, 58, 46, 74, 62, 88, 70].map((height, index) => (
-                  <span
-                    key={index}
-                    className="w-full rounded-t-sm bg-gradient-to-t from-[#89f5e7]/20 to-[#89f5e7]/80"
-                    style={{ height: `${height}%` }}
-                  />
-                ))}
-              </div>
-              <p className="text-[10px] font-medium text-blue-100">
-                Kết nối đúng người, đúng cơ hội
-              </p>
-            </div>
-            <div className="mt-3 flex items-center gap-2 text-[10px] text-blue-100">
-              <ShieldCheck aria-hidden="true" size={14} className="text-[#89f5e7]" />
-              Thông tin doanh nghiệp được xét duyệt an toàn
             </div>
           </div>
 
-          <div className="mt-auto grid grid-cols-2 gap-3 pt-5">
-            <div className="rounded-lg border border-white/15 bg-white/10 p-4">
+          <div className="mt-auto grid grid-cols-2 gap-3 pt-6">
+            <div className="rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
               <p className="flex items-center gap-2 text-lg font-bold">
-                <Users aria-hidden="true" size={17} className="text-[#89f5e7]" />
+                <UserPlus
+                  aria-hidden="true"
+                  size={17}
+                  className="text-[#89f5e7]"
+                />
                 50,000+
               </p>
               <p className="mt-1 text-[11px] leading-4 text-blue-100">
-                Ứng viên tiềm năng
+                Ứng viên công nghệ tinh hoa
               </p>
             </div>
-            <div className="rounded-lg border border-white/15 bg-white/10 p-4">
+            <div className="rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
               <p className="flex items-center gap-2 text-lg font-bold">
-                <BadgeCheck aria-hidden="true" size={17} className="text-[#89f5e7]" />
+                <BadgeCheck
+                  aria-hidden="true"
+                  size={17}
+                  className="text-[#89f5e7]"
+                />
                 ATS Suite
               </p>
               <p className="mt-1 text-[11px] leading-4 text-blue-100">
-                Quản lý tuyển dụng dễ dàng
+                Quản lý pipeline tự động
               </p>
             </div>
           </div>
@@ -326,9 +381,9 @@ export default function RecruiterRegisterPage() {
               )}
 
               {!companySaved && companyInput && (
-                <Button
+                <button
                   type="button"
-                  className="mt-7 h-12 w-full rounded-lg bg-[#0f52ba] text-sm font-semibold text-white hover:bg-[#0c469f]"
+                  className="mt-7 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0f52ba] text-sm font-semibold text-white transition hover:bg-[#0c469f] disabled:opacity-60"
                   onClick={() => void saveCompanyProfile(companyInput)}
                   disabled={isSavingCompany}
                 >
@@ -351,7 +406,7 @@ export default function RecruiterRegisterPage() {
                       />
                     </>
                   )}
-                </Button>
+                </button>
               )}
               {companySaved && (
                 <Link
@@ -383,10 +438,10 @@ export default function RecruiterRegisterPage() {
                 </p>
               </div>
 
-              <form className="space-y-6" onSubmit={handleSubmit}>
+              <form className="space-y-7" onSubmit={handleSubmit}>
                 <section className="space-y-4">
                   <SectionTitle number="1">
-                    Thông tin người đại diện
+                    Thông tin Người đại diện tuyển dụng
                   </SectionTitle>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField
@@ -408,27 +463,37 @@ export default function RecruiterRegisterPage() {
                       />
                     </FormField>
 
-                    <FormField id="jobTitle" label="Chức vụ hiện tại" required>
+                    <FormField
+                      id="jobTitle"
+                      label="Chức vụ hiện tại"
+                      icon={Briefcase}
+                      required
+                    >
                       <select
                         id="jobTitle"
                         name="jobTitle"
                         required
                         value={jobTitle}
                         onChange={(event) => setJobTitle(event.target.value)}
-                        className={`${fieldClass} appearance-none`}
+                        className={`${fieldClass} appearance-none pl-11`}
                       >
                         <option value="" disabled>
                           Chọn chức vụ đảm nhiệm
                         </option>
-                        <option>Giám đốc / Chủ doanh nghiệp</option>
-                        <option>Trưởng phòng Nhân sự</option>
-                        <option>Chuyên viên Tuyển dụng</option>
-                        <option>Quản lý / Trưởng bộ phận</option>
-                        <option>Khác</option>
+                        {JOB_TITLES.map((title) => (
+                          <option key={title} value={title}>
+                            {title}
+                          </option>
+                        ))}
                       </select>
                     </FormField>
 
-                    <FormField id="email" label="Email doanh nghiệp" icon={Mail} required>
+                    <FormField
+                      id="email"
+                      label="Email doanh nghiệp"
+                      icon={Mail}
+                      required
+                    >
                       <input
                         id="email"
                         name="email"
@@ -443,7 +508,12 @@ export default function RecruiterRegisterPage() {
                       />
                     </FormField>
 
-                    <FormField id="phone" label="Số điện thoại liên hệ" icon={Phone} required>
+                    <FormField
+                      id="phone"
+                      label="Số điện thoại di động"
+                      icon={Phone}
+                      required
+                    >
                       <input
                         id="phone"
                         name="phone"
@@ -462,11 +532,12 @@ export default function RecruiterRegisterPage() {
 
                 <section className="space-y-4">
                   <SectionTitle number="2">
-                    Thông tin pháp lý &amp; hồ sơ doanh nghiệp
+                    Thông tin Pháp lý &amp; Hồ sơ Doanh nghiệp
                   </SectionTitle>
+
                   <FormField
                     id="companyName"
-                    label="Tên công ty đầy đủ (Theo Giấy phép ĐKKD)"
+                    label="Tên công ty đầy đủ"
                     icon={Building2}
                     required
                   >
@@ -484,7 +555,12 @@ export default function RecruiterRegisterPage() {
                   </FormField>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <FormField id="taxId" label="Mã số thuế (MST)" required>
+                    <FormField
+                      id="taxId"
+                      label="Mã số thuế (MST)"
+                      icon={Hash}
+                      required
+                    >
                       <input
                         id="taxId"
                         name="taxId"
@@ -494,52 +570,39 @@ export default function RecruiterRegisterPage() {
                         value={taxId}
                         onChange={(event) => setTaxId(event.target.value)}
                         placeholder="0109876543"
-                        className={fieldClass}
+                        className={`${fieldClass} pl-11`}
                       />
                     </FormField>
 
                     <FormField
-                      id="industry"
-                      label="Lĩnh vực hoạt động"
+                      id="companySize"
+                      label="Quy mô nhân sự"
+                      icon={Users}
                       required
                     >
                       <select
-                        id="industry"
-                        name="industry"
+                        id="companySize"
+                        name="companySize"
                         required
-                        value={industry}
-                        onChange={(event) => setIndustry(event.target.value)}
-                        className={`${fieldClass} appearance-none`}
+                        value={companySize}
+                        onChange={(event) => setCompanySize(event.target.value)}
+                        className={`${fieldClass} appearance-none pl-11`}
                       >
                         <option value="" disabled>
-                          Chọn lĩnh vực hoạt động
+                          Chọn quy mô nhân sự
                         </option>
-                        <option value="Công nghệ thông tin">
-                          Công nghệ thông tin
-                        </option>
-                        <option value="Tài chính - Ngân hàng">
-                          Tài chính - Ngân hàng
-                        </option>
-                        <option value="Thương mại - Dịch vụ">
-                          Thương mại - Dịch vụ
-                        </option>
-                        <option value="Sản xuất - Công nghiệp">
-                          Sản xuất - Công nghiệp
-                        </option>
-                        <option value="Giáo dục - Đào tạo">
-                          Giáo dục - Đào tạo
-                        </option>
-                        <option value="Y tế - Chăm sóc sức khỏe">
-                          Y tế - Chăm sóc sức khỏe
-                        </option>
-                        <option value="Lĩnh vực khác">Lĩnh vực khác</option>
+                        {COMPANY_SIZES.map((size) => (
+                          <option key={size} value={size}>
+                            {size}
+                          </option>
+                        ))}
                       </select>
                     </FormField>
                   </div>
 
                   <FormField
                     id="location"
-                    label="Địa chỉ trụ sở chính (Theo Giấy phép ĐKKD)"
+                    label="Địa chỉ trụ sở chính"
                     icon={MapPin}
                     required
                   >
@@ -555,30 +618,19 @@ export default function RecruiterRegisterPage() {
                       className={`${fieldClass} pl-11`}
                     />
                   </FormField>
-
-                  <div>
-                    <label
-                      htmlFor="description"
-                      className="mb-2 block text-xs font-semibold text-[#303c50]"
-                    >
-                      Giới thiệu doanh nghiệp
-                    </label>
-                    <textarea
-                      id="description"
-                      name="description"
-                      rows={3}
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      placeholder="Mô tả ngắn về lĩnh vực hoạt động và doanh nghiệp..."
-                      className="w-full resize-y rounded-lg border border-[#dfe5ef] bg-[#eff4ff] px-4 py-3 text-sm text-[#172033] outline-none transition placeholder:text-[#8b96a8] focus:border-[#0f52ba] focus:bg-white focus:ring-4 focus:ring-[#0f52ba]/10"
-                    />
-                  </div>
                 </section>
 
                 <section className="space-y-4">
-                  <SectionTitle number="3">Mật khẩu bảo mật tài khoản</SectionTitle>
+                  <SectionTitle number="3">
+                    Mật khẩu bảo mật tài khoản
+                  </SectionTitle>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <FormField id="password" label="Mật khẩu đăng nhập" icon={LockKeyhole} required>
+                    <FormField
+                      id="password"
+                      label="Mật khẩu đăng nhập"
+                      icon={Lock}
+                      required
+                    >
                       <input
                         id="password"
                         name="password"
@@ -588,14 +640,16 @@ export default function RecruiterRegisterPage() {
                         required
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
-                        placeholder="Tối thiểu 8 ký tự"
+                        placeholder="••••••••"
                         className={`${fieldClass} pl-11 pr-12`}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword((visible) => !visible)}
                         className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-[#8591a4] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f52ba]"
-                        aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                        aria-label={
+                          showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"
+                        }
                         aria-pressed={showPassword}
                       >
                         {showPassword ? (
@@ -609,7 +663,7 @@ export default function RecruiterRegisterPage() {
                     <FormField
                       id="confirmPassword"
                       label="Xác nhận mật khẩu"
-                      icon={LockKeyhole}
+                      icon={ShieldCheck}
                       required
                     >
                       <input
@@ -623,7 +677,7 @@ export default function RecruiterRegisterPage() {
                         onChange={(event) =>
                           setConfirmPassword(event.target.value)
                         }
-                        placeholder="Nhập lại mật khẩu"
+                        placeholder="••••••••"
                         className={`${fieldClass} pl-11 pr-12`}
                       />
                       <button
@@ -647,33 +701,60 @@ export default function RecruiterRegisterPage() {
                       </button>
                     </FormField>
                   </div>
-                  <p className="text-xs text-[#68758b]">
-                    Mật khẩu cần có ít nhất 8 ký tự.
-                  </p>
                 </section>
 
-                <section className="rounded-xl bg-[#eff4ff] p-4 sm:p-5">
-                  <div className="flex items-start gap-3">
-                    <FileCheck2
-                      aria-hidden="true"
-                      className="mt-0.5 shrink-0 text-[#0f52ba]"
-                      size={20}
-                    />
-                    <div>
-                      <h2 className="text-sm font-semibold text-[#25334b]">
-                        Hồ sơ xác minh doanh nghiệp
-                      </h2>
-                      <p className="mt-1 text-xs leading-5 text-[#68758b]">
-                        Thông tin liên hệ, mã số thuế và địa chỉ sẽ được gửi
-                        cho quản trị viên để xét duyệt.
-                      </p>
-                      <p className="mt-3 rounded-md bg-white px-3 py-2 text-xs leading-5 text-[#68758b]">
-                        Hiện API chưa hỗ trợ tải tệp giấy phép kinh doanh. Bạn
-                        có thể bổ sung giấy tờ khi tính năng lưu trữ hồ sơ được
-                        tích hợp.
-                      </p>
-                    </div>
-                  </div>
+                <section className="space-y-4">
+                  <SectionTitle
+                    number="4"
+                    badge={
+                      <span className="rounded-full bg-[#CFFAF3] px-2.5 py-1 text-[10px] font-semibold text-[#006A61]">
+                        Tùy chọn tải ngay để duyệt trong 2h
+                      </span>
+                    }
+                  >
+                    Tài liệu Giấy phép Kinh doanh
+                  </SectionTitle>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                    className="sr-only"
+                    onChange={(event) =>
+                      handleLicenseFile(event.target.files?.[0] ?? null)
+                    }
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      handleLicenseFile(event.dataTransfer.files?.[0] ?? null);
+                    }}
+                    className="flex w-full flex-col items-center rounded-xl border border-dashed border-[#b7c9e8] bg-[#eff4ff]/80 px-4 py-8 text-center transition hover:border-[#0f52ba] hover:bg-[#eff4ff]"
+                  >
+                    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#dce9ff] text-[#0f52ba]">
+                      <FileUp aria-hidden="true" size={22} />
+                    </span>
+                    <p className="mt-3 text-sm font-semibold text-[#25334b]">
+                      {licenseFile
+                        ? licenseFile.name
+                        : "Kéo thả tệp PDF hoặc hình ảnh Scan GPKD vào đây"}
+                    </p>
+                    <p className="mt-1 text-xs text-[#68758b]">
+                      Định dạng cho phép: PDF, PNG, JPG (Dung lượng tối đa 15MB)
+                    </p>
+                    <p className="mt-4 inline-flex items-center gap-1.5 text-[11px] text-[#68758b]">
+                      <ShieldCheck
+                        aria-hidden="true"
+                        size={13}
+                        className="text-[#0f52ba]"
+                      />
+                      Dữ liệu được mã hóa theo chuẩn bảo mật BR-A08
+                    </p>
+                  </button>
                 </section>
 
                 <div>
@@ -689,13 +770,13 @@ export default function RecruiterRegisterPage() {
                     <span>
                       Tôi cam kết điền thông tin chính xác và đồng ý với{" "}
                       <span className="font-medium text-[#0f52ba]">
-                        Quy chế hoạt động
+                        Quy chế hoạt động sàn
                       </span>
                       ,{" "}
                       <span className="font-medium text-[#0f52ba]">
-                        Chính sách bảo mật dữ liệu
+                        Chính sách bảo mật
                       </span>{" "}
-                      của CareerLink.
+                      của Tuyển dụng nhanh.
                     </span>
                   </label>
                 </div>
@@ -709,9 +790,9 @@ export default function RecruiterRegisterPage() {
                   </p>
                 )}
 
-                <Button
+                <button
                   type="submit"
-                  className="h-12 w-full rounded-lg bg-[#003c90] text-sm font-semibold text-white hover:bg-[#0f52ba] focus-visible:ring-[#0f52ba]"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#003c90] text-sm font-semibold text-white transition hover:bg-[#0f52ba] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f52ba] disabled:opacity-60"
                   disabled={isBusy}
                 >
                   {isBusy ? (
@@ -727,15 +808,15 @@ export default function RecruiterRegisterPage() {
                     </>
                   ) : (
                     <>
-                      Đăng ký tài khoản &amp; gửi yêu cầu xác minh
-                      <ArrowRight
+                      Đăng ký tài khoản &amp; Gửi yêu cầu xác minh
+                      <UserPlus
                         aria-hidden="true"
                         className="ml-2"
                         size={18}
                       />
                     </>
                   )}
-                </Button>
+                </button>
               </form>
 
               <p className="mt-5 text-center text-sm text-[#68758b]">

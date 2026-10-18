@@ -12,6 +12,7 @@
     "db:generate": "npm run db:generate --workspace @recruitment/backend",
     "db:migrate": "npm run db:migrate --workspace @recruitment/backend",
     "db:deploy": "npm run db:deploy --workspace @recruitment/backend",
+    "db:seed-demo": "npm run db:seed-demo --workspace @recruitment/backend",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f"

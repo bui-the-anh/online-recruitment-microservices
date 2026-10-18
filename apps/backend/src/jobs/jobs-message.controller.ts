@@ -16,12 +16,40 @@ export class JobsMessageController {
     return this.jobs.list(payload);
   }
 
+  @MessagePattern({ cmd: "companies.featured" })
+  featuredCompanies(@Payload() payload: { limit?: string }) {
+    return this.jobs.featuredCompanies(payload?.limit);
+  }
+
+  @MessagePattern({ cmd: "companies.list" })
+  listCompanies(
+    @Payload() payload: Parameters<JobsService["listCompanies"]>[0],
+  ) {
+    return this.jobs.listCompanies(payload ?? {});
+  }
+
+  @MessagePattern({ cmd: "companies.get-public" })
+  getCompanyPublic(
+    @Payload() payload: Parameters<JobsService["getCompanyPublic"]>[0],
+  ) {
+    return this.jobs.getCompanyPublic(payload);
+  }
+
   @MessagePattern({ cmd: "jobs.recruiter-list" })
   recruiterJobs(
     @Payload()
-    payload: { actor: import("../common/bootstrap").Actor; page?: string },
+    payload: {
+      actor: import("../common/bootstrap").Actor;
+      page?: string;
+      pageSize?: string;
+      status?: string;
+      search?: string;
+      category?: string;
+      sort?: string;
+    },
   ) {
-    return this.jobs.recruiterJobs(payload.actor, payload.page);
+    const { actor, ...query } = payload ?? { actor: undefined as never };
+    return this.jobs.recruiterJobs(actor, query);
   }
 
   @MessagePattern({ cmd: "admin.jobs.queue" })

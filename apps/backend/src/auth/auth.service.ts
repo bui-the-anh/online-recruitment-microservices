@@ -9,6 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import { createHash, randomBytes } from "node:crypto";
 import {
   AccountStatus,
+  JobStatus,
   Role,
   VerificationStatus,
 } from "@prisma/client";
@@ -156,16 +157,19 @@ export class AuthService {
     if (actor.role !== Role.CANDIDATE) {
       throw new UnauthorizedException("Chỉ ứng viên mới có thể xem hồ sơ này");
     }
-    const profile = await this.prisma.candidateProfile.findUnique({
-      where: { userId: actor.id },
-      include: {
-        user: {
-          select: { id: true, email: true, fullName: true, role: true },
+    const [profile, applicationsCount] = await Promise.all([
+      this.prisma.candidateProfile.findUnique({
+        where: { userId: actor.id },
+        include: {
+          user: {
+            select: { id: true, email: true, fullName: true, role: true },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.application.count({ where: { candidateId: actor.id } }),
+    ]);
     if (!profile) throw new NotFoundException("Không tìm thấy hồ sơ ứng viên");
-    return profile;
+    return { ...profile, applicationsCount };
   }
 
   async updateCandidateProfile(
@@ -175,6 +179,14 @@ export class AuthService {
       phone?: string;
       location?: string;
       headline?: string;
+      bio?: string;
+      experienceYears?: number;
+      level?: string;
+      expectedSalaryMin?: number;
+      expectedSalaryMax?: number;
+      workPreference?: string;
+      skills?: string[];
+      skillLevels?: Array<{ name: string; percent: number }>;
     },
   ) {
     if (actor.role !== Role.CANDIDATE) {
@@ -193,6 +205,52 @@ export class AuthService {
     if (input.headline && input.headline.length > 200) {
       throw new BadRequestException("Tiêu đề hồ sơ không hợp lệ");
     }
+    if (input.bio !== undefined && input.bio.length > 4000) {
+      throw new BadRequestException("Giới thiệu bản thân quá dài");
+    }
+    if (input.level !== undefined && input.level.length > 80) {
+      throw new BadRequestException("Cấp bậc không hợp lệ");
+    }
+    if (
+      input.workPreference !== undefined &&
+      input.workPreference.length > 240
+    ) {
+      throw new BadRequestException("Mong muốn làm việc không hợp lệ");
+    }
+    if (
+      input.expectedSalaryMin !== undefined &&
+      input.expectedSalaryMax !== undefined &&
+      input.expectedSalaryMin > input.expectedSalaryMax
+    ) {
+      throw new BadRequestException(
+        "Mức lương kỳ vọng tối thiểu không thể lớn hơn tối đa",
+      );
+    }
+
+    const profileData = {
+      ...(input.phone !== undefined ? { phone: input.phone } : {}),
+      ...(input.location !== undefined ? { location: input.location } : {}),
+      ...(input.headline !== undefined ? { headline: input.headline } : {}),
+      ...(input.bio !== undefined ? { bio: input.bio } : {}),
+      ...(input.experienceYears !== undefined
+        ? { experienceYears: input.experienceYears }
+        : {}),
+      ...(input.level !== undefined ? { level: input.level.trim() } : {}),
+      ...(input.expectedSalaryMin !== undefined
+        ? { expectedSalaryMin: input.expectedSalaryMin }
+        : {}),
+      ...(input.expectedSalaryMax !== undefined
+        ? { expectedSalaryMax: input.expectedSalaryMax }
+        : {}),
+      ...(input.workPreference !== undefined
+        ? { workPreference: input.workPreference.trim() }
+        : {}),
+      ...(input.skills !== undefined ? { skills: input.skills } : {}),
+      ...(input.skillLevels !== undefined
+        ? { skillLevels: input.skillLevels }
+        : {}),
+    };
+
     return this.prisma.$transaction(async (transaction) => {
       if (fullName !== undefined) {
         await transaction.user.update({
@@ -204,15 +262,9 @@ export class AuthService {
         where: { userId: actor.id },
         create: {
           userId: actor.id,
-          phone: input.phone,
-          location: input.location,
-          headline: input.headline,
+          ...profileData,
         },
-        update: {
-          ...(input.phone !== undefined ? { phone: input.phone } : {}),
-          ...(input.location !== undefined ? { location: input.location } : {}),
-          ...(input.headline !== undefined ? { headline: input.headline } : {}),
-        },
+        update: profileData,
         include: {
           user: {
             select: { id: true, email: true, fullName: true, role: true },
@@ -226,24 +278,239 @@ export class AuthService {
     if (actor.role !== Role.ADMIN) {
       return { role: actor.role };
     }
-    const [users, recruitersPendingVerification] = await Promise.all([
+    const [
+      usersByRole,
+      recruitersTotal,
+      recruitersPending,
+      recruitersVerified,
+      recruitersSuspended,
+      pendingCompanies,
+    ] = await Promise.all([
       this.prisma.user.groupBy({
         by: ["role"],
         _count: { id: true },
       }),
+      this.prisma.user.count({ where: { role: Role.RECRUITER } }),
       this.prisma.user.count({
         where: {
           role: Role.RECRUITER,
           verificationStatus: VerificationStatus.PENDING_VERIFICATION,
         },
       }),
+      this.prisma.user.count({
+        where: {
+          role: Role.RECRUITER,
+          verificationStatus: VerificationStatus.VERIFIED,
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          role: Role.RECRUITER,
+          accountStatus: AccountStatus.SUSPENDED,
+        },
+      }),
+      this.prisma.user.findMany({
+        where: {
+          role: Role.RECRUITER,
+          verificationStatus: VerificationStatus.PENDING_VERIFICATION,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          verificationStatus: true,
+          createdAt: true,
+          company: {
+            select: {
+              id: true,
+              name: true,
+              industry: true,
+              location: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 8,
+      }),
     ]);
-    return { usersByRole: users, recruitersPendingVerification };
+    return {
+      usersByRole,
+      recruitersPendingVerification: recruitersPending,
+      recruiters: {
+        total: recruitersTotal,
+        pending: recruitersPending,
+        verified: recruitersVerified,
+        suspended: recruitersSuspended,
+      },
+      pendingCompanies,
+    };
   }
 
-  async listRecruiters() {
-    return this.prisma.user.findMany({
+  async listRecruiters(query: {
+    search?: string;
+    verification?: string;
+    accountStatus?: string;
+    page?: string;
+    pageSize?: string;
+    sort?: string;
+  } = {}) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(50, Math.max(1, Number(query.pageSize) || 10));
+    const search = query.search?.trim();
+    const verificationRaw = query.verification?.trim().toUpperCase();
+    const accountRaw = query.accountStatus?.trim().toUpperCase();
+
+    const verification =
+      verificationRaw &&
+      verificationRaw !== "ALL" &&
+      Object.values(VerificationStatus).includes(
+        verificationRaw as VerificationStatus,
+      )
+        ? (verificationRaw as VerificationStatus)
+        : undefined;
+    const accountStatus =
+      accountRaw &&
+      accountRaw !== "ALL" &&
+      Object.values(AccountStatus).includes(accountRaw as AccountStatus)
+        ? (accountRaw as AccountStatus)
+        : undefined;
+
+    const where = {
+      role: Role.RECRUITER,
+      ...(verification ? { verificationStatus: verification } : {}),
+      ...(accountStatus ? { accountStatus } : {}),
+      ...(search
+        ? {
+            OR: [
+              {
+                fullName: {
+                  contains: search,
+                  mode: "insensitive" as const,
+                },
+              },
+              {
+                email: { contains: search, mode: "insensitive" as const },
+              },
+              {
+                company: {
+                  name: { contains: search, mode: "insensitive" as const },
+                },
+              },
+              {
+                company: {
+                  taxCode: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
+              },
+              {
+                company: {
+                  contactPhone: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [items, total, pending, verified, suspended, createdThisWeek] =
+      await Promise.all([
+        this.prisma.user.findMany({
+          where,
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            accountStatus: true,
+            verificationStatus: true,
+            createdAt: true,
+            company: {
+              select: {
+                id: true,
+                name: true,
+                industry: true,
+                location: true,
+                address: true,
+                taxCode: true,
+                contactPhone: true,
+                verificationDetails: true,
+              },
+            },
+          },
+          orderBy:
+            query.sort === "oldest"
+              ? { createdAt: "asc" }
+              : { createdAt: "desc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        this.prisma.user.count({ where }),
+        this.prisma.user.count({
+          where: {
+            role: Role.RECRUITER,
+            verificationStatus: VerificationStatus.PENDING_VERIFICATION,
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            role: Role.RECRUITER,
+            verificationStatus: VerificationStatus.VERIFIED,
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            role: Role.RECRUITER,
+            accountStatus: AccountStatus.SUSPENDED,
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            role: Role.RECRUITER,
+            createdAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            },
+          },
+        }),
+      ]);
+
+    const allTotal = await this.prisma.user.count({
       where: { role: Role.RECRUITER },
+    });
+    const cleanRate =
+      allTotal > 0 ? Math.round((verified / allTotal) * 1000) / 10 : 0;
+
+    return {
+      items: items.map((item) => ({
+        ...item,
+        code: `REC-${item.id.replace(/-/g, "").slice(0, 5).toUpperCase()}`,
+        phone: item.company?.contactPhone ?? null,
+      })),
+      total,
+      page,
+      pageSize,
+      counts: {
+        total: allTotal,
+        pending,
+        verified,
+        suspended,
+        createdThisWeek,
+        cleanRate,
+      },
+    };
+  }
+
+  async getRecruiterDetail(id: string) {
+    const recruiterId = id?.trim();
+    if (!recruiterId) {
+      throw new BadRequestException("Thiếu mã nhà tuyển dụng");
+    }
+
+    const recruiter = await this.prisma.user.findFirst({
+      where: { id: recruiterId, role: Role.RECRUITER },
       select: {
         id: true,
         email: true,
@@ -251,10 +518,122 @@ export class AuthService {
         accountStatus: true,
         verificationStatus: true,
         createdAt: true,
-        company: { select: { id: true, name: true, verificationDetails: true } },
+        updatedAt: true,
+        company: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            website: true,
+            industry: true,
+            location: true,
+            address: true,
+            taxCode: true,
+            contactPhone: true,
+            companySize: true,
+            foundedYear: true,
+            verificationDetails: true,
+            licenseDocumentUrl: true,
+            licenseDocumentName: true,
+            team: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
-      orderBy: { createdAt: "desc" },
     });
+    if (!recruiter) {
+      throw new NotFoundException("Không tìm thấy nhà tuyển dụng");
+    }
+
+    const jobs = await this.prisma.job.findMany({
+      where: { recruiterId: recruiter.id },
+      orderBy: [{ createdAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        location: true,
+        workMode: true,
+        status: true,
+        salaryMin: true,
+        salaryMax: true,
+        currency: true,
+        createdAt: true,
+        publishedAt: true,
+        _count: { select: { applications: true } },
+      },
+    });
+
+    const jobCounts = {
+      approved: 0,
+      pending: 0,
+      rejected: 0,
+      closed: 0,
+      total: jobs.length,
+    };
+    for (const job of jobs) {
+      if (job.status === JobStatus.APPROVED) jobCounts.approved += 1;
+      if (job.status === JobStatus.PENDING) jobCounts.pending += 1;
+      if (job.status === JobStatus.REJECTED) jobCounts.rejected += 1;
+      if (job.status === JobStatus.CLOSED) jobCounts.closed += 1;
+    }
+
+    let contactTitle = "Nhà tuyển dụng";
+    const team = Array.isArray(recruiter.company?.team)
+      ? (recruiter.company.team as Array<{ title?: string; name?: string }>)
+      : [];
+    const matched = team.find(
+      (member) =>
+        member.name &&
+        member.name.toLowerCase() === recruiter.fullName.toLowerCase(),
+    );
+    contactTitle = matched?.title || team[0]?.title || contactTitle;
+
+    return {
+      id: recruiter.id,
+      code: `REC-${recruiter.id.replace(/-/g, "").slice(0, 8).toUpperCase()}`,
+      email: recruiter.email,
+      fullName: recruiter.fullName,
+      contactTitle,
+      phone: recruiter.company?.contactPhone ?? null,
+      accountStatus: recruiter.accountStatus,
+      verificationStatus: recruiter.verificationStatus,
+      createdAt: recruiter.createdAt,
+      updatedAt: recruiter.updatedAt,
+      company: recruiter.company
+        ? {
+            id: recruiter.company.id,
+            name: recruiter.company.name,
+            description: recruiter.company.description,
+            website: recruiter.company.website,
+            industry: recruiter.company.industry,
+            location: recruiter.company.location,
+            address: recruiter.company.address,
+            taxCode: recruiter.company.taxCode,
+            contactPhone: recruiter.company.contactPhone,
+            companySize: recruiter.company.companySize,
+            foundedYear: recruiter.company.foundedYear,
+            verificationDetails: recruiter.company.verificationDetails,
+            licenseDocumentUrl: recruiter.company.licenseDocumentUrl,
+            licenseDocumentName: recruiter.company.licenseDocumentName,
+            createdAt: recruiter.company.createdAt,
+          }
+        : null,
+      jobCounts,
+      jobs: jobs.map((job) => ({
+        id: job.id,
+        title: job.title,
+        location: job.location,
+        workMode: job.workMode,
+        status: job.status,
+        salaryMin: job.salaryMin != null ? Number(job.salaryMin) : null,
+        salaryMax: job.salaryMax != null ? Number(job.salaryMax) : null,
+        currency: job.currency,
+        createdAt: job.createdAt,
+        publishedAt: job.publishedAt,
+        applicants: job._count.applications,
+      })),
+    };
   }
 
   async listAuditLogs(actor: Actor) {
@@ -274,7 +653,7 @@ export class AuthService {
   async updateVerification(input: {
     actor: Actor;
     id: string;
-    update: { status?: VerificationStatus };
+    update: { status?: VerificationStatus; note?: string };
   }) {
     const status = input.update?.status;
     if (
@@ -288,8 +667,10 @@ export class AuthService {
     }
     const recruiter = await this.prisma.user.findFirst({
       where: { id: input.id, role: Role.RECRUITER },
+      include: { company: { select: { id: true } } },
     });
     if (!recruiter) throw new NotFoundException("Không tìm thấy nhà tuyển dụng");
+    const note = input.update?.note?.trim();
     const updated = await this.prisma.$transaction(async (transaction) => {
       const user = await transaction.user.update({
         where: { id: recruiter.id },
@@ -302,6 +683,17 @@ export class AuthService {
           verificationStatus: true,
         },
       });
+      if (recruiter.company?.id) {
+        await transaction.company.update({
+          where: { id: recruiter.company.id },
+          data: {
+            verificationDetails:
+              status === VerificationStatus.VERIFIED
+                ? note || "Admin đã xác minh hồ sơ doanh nghiệp"
+                : note || "GPKD/MST không hợp lệ — bị từ chối xác minh",
+          },
+        });
+      }
       await transaction.auditLog.create({
         data: {
           actorId: input.actor.id,
@@ -309,6 +701,7 @@ export class AuthService {
           action: `RECRUITER_${status}`,
           entityType: "User",
           entityId: recruiter.id,
+          details: note ? { note } : undefined,
         },
       });
       return user;

@@ -4,7 +4,10 @@ import {
   MicroserviceOptions,
   Transport,
 } from "@nestjs/microservices";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import cookieParser from "cookie-parser";
+import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { HttpToRpcExceptionFilter } from "./rpc-exception.filter";
 export interface Actor {
   id: string;
@@ -32,7 +35,7 @@ export async function startHttpApplication(
   rootModule: Type<unknown>,
 ): Promise<void> {
   requireRuntimeEnvironment();
-  const app = await NestFactory.create(rootModule);
+  const app = await NestFactory.create<NestExpressApplication>(rootModule);
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
@@ -46,6 +49,9 @@ export async function startHttpApplication(
     origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
     credentials: true,
   });
+  const uploadsDir = join(process.cwd(), "uploads");
+  if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+  app.useStaticAssets(uploadsDir, { prefix: "/uploads/" });
   await app.listen(Number(process.env.API_PORT ?? 3001), "0.0.0.0");
 }
 

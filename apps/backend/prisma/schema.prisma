@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -39,6 +40,12 @@ enum EmploymentType {
   TEMPORARY
 }
 
+enum WorkMode {
+  ONSITE
+  HYBRID
+  REMOTE
+}
+
 enum ApplicationStatus {
   APPLIED
   VIEWED
@@ -71,13 +78,21 @@ model User {
 }
 
 model CandidateProfile {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @unique @map("user_id") @db.Uuid
-  phone     String?  @db.VarChar(32)
-  location  String?  @db.VarChar(160)
-  headline  String?  @db.VarChar(200)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  phone             String?  @db.VarChar(32)
+  location          String?  @db.VarChar(160)
+  headline          String?  @db.VarChar(200)
+  bio               String?  @db.Text
+  experienceYears   Decimal? @map("experience_years") @db.Decimal(4, 1)
+  level             String?  @db.VarChar(80)
+  expectedSalaryMin Decimal? @map("expected_salary_min") @db.Decimal(12, 2)
+  expectedSalaryMax Decimal? @map("expected_salary_max") @db.Decimal(12, 2)
+  workPreference    String?  @map("work_preference") @db.VarChar(240)
+  skills            Json?
+  skillLevels       Json?    @map("skill_levels")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -92,7 +107,27 @@ model Company {
   website             String?  @db.VarChar(500)
   industry            String?  @db.VarChar(120)
   location            String?  @db.VarChar(160)
+  address             String?  @db.VarChar(240)
+  taxCode             String?  @map("tax_code") @db.VarChar(32)
+  contactPhone        String?  @map("contact_phone") @db.VarChar(32)
+  companySize         String?  @map("company_size") @db.VarChar(80)
+  foundedYear         Int?     @map("founded_year")
+  followersCount      Int      @default(0) @map("followers_count")
+  rating              Decimal? @db.Decimal(3, 1)
+  reviewCount         Int      @default(0) @map("review_count")
+  benefits            Json?
+  benefitsDetail      Json?    @map("benefits_detail")
+  responseRate        Decimal? @map("response_rate") @db.Decimal(5, 2)
+  avgResponseDays     Decimal? @map("avg_response_days") @db.Decimal(4, 1)
+  coverUrl            String?  @map("cover_url") @db.VarChar(500)
+  galleryUrls         Json?    @map("gallery_urls")
+  metrics             Json?
+  cultureValues       Json?    @map("culture_values")
+  team                Json?
+  featured            Boolean  @default(false)
   verificationDetails String?  @map("verification_details") @db.Text
+  licenseDocumentUrl  String?  @map("license_document_url") @db.VarChar(500)
+  licenseDocumentName String?  @map("license_document_name") @db.VarChar(200)
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -103,23 +138,33 @@ model Company {
 }
 
 model Job {
-  id             String         @id @default(uuid()) @db.Uuid
-  companyId      String         @map("company_id") @db.Uuid
-  recruiterId    String         @map("recruiter_id") @db.Uuid
-  title          String         @db.VarChar(200)
-  description    String         @db.Text
-  requirements   String?        @db.Text
-  location       String         @db.VarChar(160)
-  employmentType EmploymentType @map("employment_type")
-  salaryMin      Decimal?       @map("salary_min") @db.Decimal(12, 2)
-  salaryMax      Decimal?       @map("salary_max") @db.Decimal(12, 2)
-  currency       String         @default("VND") @db.VarChar(3)
-  status         JobStatus      @default(PENDING)
-  rejectionNote  String?        @map("rejection_note") @db.Text
-  publishedAt    DateTime?      @map("published_at") @db.Timestamptz(6)
-  expiresAt      DateTime?      @map("expires_at") @db.Timestamptz(6)
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String         @id @default(uuid()) @db.Uuid
+  companyId        String         @map("company_id") @db.Uuid
+  recruiterId      String         @map("recruiter_id") @db.Uuid
+  title            String         @db.VarChar(200)
+  description      String         @db.Text
+  requirements     String?        @db.Text
+  benefits         String?        @db.Text
+  location         String         @db.VarChar(160)
+  employmentType   EmploymentType @map("employment_type")
+  workMode         WorkMode       @default(ONSITE) @map("work_mode")
+  category         String?        @db.VarChar(80)
+  level            String?        @db.VarChar(80)
+  headcount        Int            @default(1)
+  skills           Json?
+  experienceMin    Int?           @map("experience_min")
+  experienceMax    Int?           @map("experience_max")
+  fastResponse     Boolean        @default(false) @map("fast_response")
+  salaryMin        Decimal?       @map("salary_min") @db.Decimal(12, 2)
+  salaryMax        Decimal?       @map("salary_max") @db.Decimal(12, 2)
+  salaryNegotiable Boolean        @default(false) @map("salary_negotiable")
+  currency         String         @default("VND") @db.VarChar(3)
+  status           JobStatus      @default(PENDING)
+  rejectionNote    String?        @map("rejection_note") @db.Text
+  publishedAt      DateTime?      @map("published_at") @db.Timestamptz(6)
+  expiresAt        DateTime?      @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   company     Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
   recruiter   User          @relation("JobRecruiter", fields: [recruiterId], references: [id], onDelete: Restrict)
@@ -128,18 +173,21 @@ model Job {
   @@index([status, createdAt])
   @@index([companyId])
   @@index([recruiterId, status])
+  @@index([category, status])
   @@map("jobs")
 }
 
 model Application {
-  id          String            @id @default(uuid()) @db.Uuid
-  jobId       String            @map("job_id") @db.Uuid
-  candidateId String            @map("candidate_id") @db.Uuid
-  cvUrl       String            @map("cv_url") @db.VarChar(2048)
-  coverLetter String?           @map("cover_letter") @db.Text
-  status      ApplicationStatus @default(APPLIED)
-  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String            @id @default(uuid()) @db.Uuid
+  jobId                String            @map("job_id") @db.Uuid
+  candidateId          String            @map("candidate_id") @db.Uuid
+  cvUrl                String            @map("cv_url") @db.VarChar(2048)
+  coverLetter          String?           @map("cover_letter") @db.Text
+  status               ApplicationStatus @default(APPLIED)
+  interviewScheduledAt DateTime?         @map("interview_scheduled_at") @db.Timestamptz(6)
+  interviewDetails     String?           @map("interview_details") @db.VarChar(500)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   job       Job  @relation(fields: [jobId], references: [id], onDelete: Restrict)
   candidate User @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Restrict)

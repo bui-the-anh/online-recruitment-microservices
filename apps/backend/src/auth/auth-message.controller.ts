@@ -46,12 +46,7 @@ export class AuthMessageController {
     @Payload()
     payload: {
       actor: Parameters<AuthService["candidateProfile"]>[0];
-      profile: {
-        fullName?: string;
-        phone?: string;
-        location?: string;
-        headline?: string;
-      };
+      profile: Parameters<AuthService["updateCandidateProfile"]>[1];
     },
   ) {
     return this.auth.updateCandidateProfile(payload.actor, payload.profile);
@@ -63,8 +58,15 @@ export class AuthMessageController {
   }
 
   @MessagePattern({ cmd: "admin.recruiters.list" })
-  listRecruiters() {
-    return this.auth.listRecruiters();
+  listRecruiters(
+    @Payload() payload: Parameters<AuthService["listRecruiters"]>[0],
+  ) {
+    return this.auth.listRecruiters(payload ?? {});
+  }
+
+  @MessagePattern({ cmd: "admin.recruiters.get" })
+  getRecruiterDetail(@Payload() payload: { id?: string }) {
+    return this.auth.getRecruiterDetail(payload?.id ?? "");
   }
 
   @MessagePattern({ cmd: "admin.audit-logs.list" })

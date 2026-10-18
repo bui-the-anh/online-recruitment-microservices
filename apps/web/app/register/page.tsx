@@ -1,21 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
 import Link from "next/link";
+import { FormEvent, useMemo, useState } from "react";
 import {
+  Activity,
   ArrowRight,
-  BriefcaseBusiness,
+  Building2,
   Check,
   Eye,
   EyeOff,
-  LoaderCircle,
-  LockKeyhole,
+  FileText,
+  Lock,
   Mail,
+  Network,
+  Phone,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { api, formatApiError } from "@/lib/api";
 
 type RegisteredUser = {
@@ -29,29 +30,99 @@ type RegisterResponse = {
   user: RegisteredUser;
 };
 
+const FEATURES = [
+  {
+    title: "Không lưu CV cố định.",
+    description:
+      "Quản lý hồ sơ linh hoạt, cập nhật kỹ năng và kinh nghiệm bất cứ lúc nào trước khi ứng tuyển.",
+    icon: FileText,
+    iconBg: "bg-[#DCE9FF]",
+    iconColor: "text-[#003C90]",
+  },
+  {
+    title: "Theo dõi tiến trình thời gian thực.",
+    description:
+      "Nhận cập nhật trạng thái ứng tuyển ngay khi nhà tuyển dụng thao tác trên hệ thống.",
+    icon: Activity,
+    iconBg: "bg-[#CFFAF3]",
+    iconColor: "text-[#006A61]",
+    flow: true,
+  },
+  {
+    title: "100% Doanh nghiệp xác thực.",
+    description:
+      "Chỉ kết nối với doanh nghiệp đã kiểm chứng giấy phép và mã số thuế, bảo vệ quyền lợi ứng viên.",
+    icon: ShieldCheck,
+    iconBg: "bg-[#DCE9FF]",
+    iconColor: "text-[#003C90]",
+  },
+];
+
+const PASSWORD_RULES = [
+  {
+    id: "length",
+    label: "Tối thiểu 8 ký tự",
+    test: (value: string) => value.length >= 8,
+  },
+  {
+    id: "upper",
+    label: "Có ít nhất 1 chữ hoa",
+    test: (value: string) => /[A-Z]/.test(value),
+  },
+  {
+    id: "digit",
+    label: "Có ít nhất 1 chữ số",
+    test: (value: string) => /\d/.test(value),
+  },
+  {
+    id: "special",
+    label: "Ký tự đặc biệt",
+    test: (value: string) => /[^A-Za-z0-9]/.test(value),
+  },
+] as const;
+
 export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [registeredUser, setRegisteredUser] = useState<RegisteredUser | null>(
     null,
   );
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const passwordChecks = useMemo(
+    () =>
+      PASSWORD_RULES.map((rule) => ({
+        ...rule,
+        passed: rule.test(password),
+      })),
+    [password],
+  );
+
+  const passwordStrengthLabel = useMemo(() => {
+    if (!password) return "Chưa nhập";
+    const passed = passwordChecks.filter((rule) => rule.passed).length;
+    if (passed <= 1) return "Yếu";
+    if (passed === 2) return "Trung bình";
+    if (passed === 3) return "Khá";
+    return "Mạnh";
+  }, [password, passwordChecks]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
-    if (password.length < 8) {
-      setError("Mật khẩu cần có ít nhất 8 ký tự.");
+    const allPassed = passwordChecks.every((rule) => rule.passed);
+    if (!allPassed) {
+      setError("Mật khẩu chưa đáp ứng đủ các yêu cầu bảo mật.");
       return;
     }
-    if (password !== confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp.");
+    if (!agreed) {
+      setError("Bạn cần đồng ý với điều khoản sử dụng để tiếp tục.");
       return;
     }
 
@@ -63,9 +134,18 @@ export default function RegisterPage() {
         password,
         role: "CANDIDATE",
       });
+
+      const trimmedPhone = phone.trim();
+      if (trimmedPhone) {
+        try {
+          await api.patch("/candidate/profile", { phone: trimmedPhone });
+        } catch {
+          // Đăng ký đã thành công — phone có thể cập nhật sau trong hồ sơ.
+        }
+      }
+
       setRegisteredUser(response.data.user);
       setPassword("");
-      setConfirmPassword("");
     } catch (requestError) {
       setError(formatApiError(requestError));
     } finally {
@@ -74,148 +154,150 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9ff] text-[#172033]">
-      <header className="h-16 border-b border-[#e9edf5] bg-white/90">
-        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F8F9FF] text-[#0B1C30]">
+      <header className="border-b border-[#E8ECF4] bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-[1280px] items-center px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
             className="inline-flex items-center gap-2.5"
-            aria-label="CareerLink trang chủ"
+            aria-label="Tuyển dụng nhanh"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0f52ba] text-white shadow-sm">
-              <BriefcaseBusiness
-                aria-hidden="true"
-                size={19}
-                strokeWidth={2.2}
-              />
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#003C90] text-white shadow-sm">
+              <Network aria-hidden="true" size={18} />
             </span>
-            <span className="text-lg font-bold tracking-tight text-[#14294c]">
-              Career<span className="text-[#0f52ba]">Link</span>
+            <span className="text-lg font-bold tracking-tight text-[#003C90]">
+              Tuyển dụng nhanh
             </span>
           </Link>
-          <p className="text-sm text-[#68758b]">
-            Đã có tài khoản?{" "}
-            <Link
-              href="/"
-              className="font-semibold text-[#0f52ba] hover:text-[#0c469f]"
-            >
-              Đăng nhập
-            </Link>
-          </p>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[0.78fr_1.12fr] lg:gap-12 lg:px-8 lg:py-8">
-        <section className="relative isolate hidden min-h-[680px] overflow-hidden rounded-xl bg-[#eff4ff] p-10 text-[#172033] shadow-[0_20px_55px_-38px_rgba(25,43,77,0.3)] lg:flex lg:flex-col xl:min-h-[814px]">
-          <div className="pointer-events-none absolute -left-20 -top-20 -z-10 h-72 w-72 rounded-full bg-[#003c90]/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-20 -right-16 -z-10 h-80 w-80 rounded-full bg-[#86f2e4]/40 blur-3xl" />
+      <main className="mx-auto grid max-w-[1280px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[0.95fr_1.15fr] lg:items-stretch lg:gap-8 lg:px-8 lg:py-8">
+        <aside className="relative isolate hidden overflow-hidden rounded-2xl bg-[#EFF4FF] p-8 text-[#0B1C30] shadow-[0_20px_50px_-32px_rgba(0,60,144,0.28)] lg:flex lg:flex-col xl:p-10">
+          <div className="pointer-events-none absolute -left-16 -top-20 -z-10 h-72 w-72 rounded-full bg-[#003C90]/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -right-12 -z-10 h-80 w-80 rounded-full bg-[#86F2E4]/45 blur-3xl" />
 
-          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-white px-3.5 py-2 text-xs font-semibold tracking-wide text-[#34445e]">
-            <span className="h-2 w-2 rounded-full bg-[#006a61]" />
-            CAREERLINK · CÙNG BẠN TIẾN XA
+          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-[#34445E] shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-[#006A61]" />
+            Cộng đồng 45.000+ Kỹ sư & Chuyên gia số
           </div>
 
-          <div className="mt-14 max-w-md">
-            <p className="text-sm font-medium text-[#0f52ba]">
-              Bắt đầu hành trình của bạn
-            </p>
-            <h1 className="mt-4 text-4xl font-semibold leading-[1.16] tracking-tight text-[#172033] xl:text-[44px]">
-              Mở ra cơ hội,
-              <br />
-              kết nối tương lai
-              <span className="text-[#0f52ba]">.</span>
-            </h1>
-            <p className="mt-5 max-w-sm text-[15px] leading-7 text-[#68758b]">
-              Tạo tài khoản CareerLink để kết nối với những cơ hội nghề nghiệp
-              phù hợp và phát triển theo cách của riêng bạn.
-            </p>
-          </div>
+          <h1 className="mt-8 max-w-[20ch] text-[32px] font-bold leading-[1.2] tracking-tight xl:text-[36px]">
+            Khám phá cơ hội nghề nghiệp{" "}
+            <span className="text-[#0F52BA]">bứt phá</span> tại các công ty công
+            nghệ hàng đầu.
+          </h1>
+          <p className="mt-4 max-w-[42ch] text-sm leading-6 text-[#68758B]">
+            Xây dựng hồ sơ chuyên nghiệp, theo dõi tiến trình ứng tuyển minh
+            bạch và kết nối với doanh nghiệp đã được xác thực trên nền tảng.
+          </p>
 
-          <div className="mt-10 space-y-3">
-            <div className="flex min-h-[88px] items-center gap-4 rounded-lg bg-white px-4 py-4 shadow-sm">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#d9e2ff] text-[#0f52ba]">
-                <BriefcaseBusiness aria-hidden="true" size={20} />
-              </span>
-              <div>
-                <h2 className="text-sm font-semibold">Cơ hội dành cho bạn</h2>
-                <p className="mt-1 text-xs leading-5 text-[#68758b]">
-                  Khám phá các vị trí phù hợp với kỹ năng và mục tiêu nghề
-                  nghiệp.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-white px-4 py-4 shadow-sm">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#d3e4fe] text-[#0f52ba]">
-                <ShieldCheck aria-hidden="true" size={20} />
-              </span>
-              <div className="mt-3">
-                <h2 className="text-sm font-semibold">Kết nối tin cậy</h2>
-                <p className="mt-1 text-xs leading-5 text-[#68758b]">
-                  Ứng tuyển và theo dõi tiến trình ngay trên một nền tảng.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-auto pt-8 text-xs text-[#68758b]">
-            Một tài khoản, nhiều cơ hội phát triển.
-          </div>
-        </section>
-
-        <section className="flex min-h-[680px] items-center justify-center rounded-xl border border-[#edf0f6] bg-white px-6 py-10 shadow-[0_16px_50px_-36px_rgba(25,43,77,0.35)] sm:px-10 lg:min-h-[627px] lg:self-start lg:px-10 xl:px-12">
-          <div className="w-full max-w-[480px]">
-            {registeredUser ? (
-              <div className="py-6">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf2ff] text-[#0f52ba]">
-                  <Check aria-hidden="true" size={27} strokeWidth={2.5} />
+          <div className="mt-8 space-y-3">
+            {FEATURES.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <div
+                  key={feature.title}
+                  className="rounded-xl bg-white px-4 py-3.5 shadow-sm"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <span
+                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${feature.iconBg}`}
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        size={18}
+                        className={feature.iconColor}
+                      />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0B1C30]">
+                        {feature.title}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-5 text-[#68758B]">
+                        {feature.description}
+                      </p>
+                    </div>
+                  </div>
+                  {feature.flow ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#68758B]">
+                      <span>Đã nộp</span>
+                      <span className="text-[#C3C6D5]">›</span>
+                      <span>Đã xem</span>
+                      <span className="text-[#C3C6D5]">›</span>
+                      <span>Phỏng vấn</span>
+                      <span className="text-[#C3C6D5]">›</span>
+                      <span className="rounded-full bg-[#DCE9FF] px-2 py-0.5 font-semibold text-[#003C90]">
+                        Nhận Offer
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
-                <p className="mt-7 text-sm font-semibold text-[#0f52ba]">
-                  TẠO TÀI KHOẢN THÀNH CÔNG
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[#172033]">
-                  Chào mừng, {registeredUser.fullName}
-                </h2>
-                <p className="mt-3 text-sm leading-6 text-[#68758b]">
-                  Tài khoản {registeredUser.email} đã được tạo. Bạn đã được
-                  đăng nhập và có thể bắt đầu sử dụng CareerLink.
-                </p>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="flex items-center justify-center py-2 lg:py-0">
+          <div className="w-full max-w-[560px] rounded-2xl bg-white p-6 shadow-[0_18px_50px_-28px_rgba(20,41,76,0.35)] sm:p-8 lg:p-10">
+            {registeredUser ? (
+              <div className="space-y-5">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EFF4FF] text-[#003C90]">
+                  <Check aria-hidden="true" size={26} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[#0F52BA]">
+                    TẠO TÀI KHOẢN THÀNH CÔNG
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-[#0B1C30] sm:text-[28px]">
+                    Chào mừng, {registeredUser.fullName}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-[#68758B]">
+                    Tài khoản {registeredUser.email} đã sẵn sàng. Bạn có thể
+                    đăng nhập và bắt đầu hành trình sự nghiệp ngay.
+                  </p>
+                </div>
                 <Link
                   href="/"
-                  className="mt-7 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0f52ba] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_-8px_rgba(15,82,186,0.7)] transition hover:bg-[#0c469f] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0f52ba]/20"
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#003C90] text-sm font-semibold text-white transition hover:bg-[#0F52BA]"
                 >
-                  Tiếp tục
-                  <ArrowRight aria-hidden="true" className="ml-2" size={18} />
+                  Đăng nhập ngay
+                  <ArrowRight aria-hidden="true" size={16} />
                 </Link>
               </div>
             ) : (
               <>
-                <div className="mb-6">
-                  <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#eff4ff] px-3 py-1.5 text-xs font-semibold text-[#0f52ba]">
-                    <ShieldCheck aria-hidden="true" size={15} />
-                    TẠO TÀI KHOẢN MIỄN PHÍ
-                  </div>
-                  <h2 className="text-3xl font-semibold tracking-tight text-[#172033] sm:text-[34px]">
-                    Tạo tài khoản mới
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight text-[#0B1C30] sm:text-[28px]">
+                    Tạo tài khoản Ứng viên
                   </h2>
-                  <p className="mt-2 text-sm leading-6 text-[#68758b]">
-                    Tham gia CareerLink và mở ra cơ hội tiếp theo của bạn.
+                  <p className="mt-2 text-sm leading-6 text-[#68758B]">
+                    Tham gia cộng đồng nhân tài công nghệ và mở khóa cơ hội việc
+                    làm phù hợp với bạn.
                   </p>
+                </div>
+
+                <div className="my-6 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-[#E8ECF4]" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#98A3B4]">
+                    Đăng ký bằng Email
+                  </span>
+                  <div className="h-px flex-1 bg-[#E8ECF4]" />
                 </div>
 
                 <form className="space-y-4" onSubmit={handleSubmit}>
                   <div>
                     <label
                       htmlFor="fullName"
-                      className="mb-2 block text-sm font-medium text-[#303c50]"
+                      className="mb-1.5 block text-sm font-medium text-[#0B1C30]"
                     >
-                      Họ và tên
+                      Họ và tên <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <UserRound
                         aria-hidden="true"
-                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#98a3b4]"
-                        size={18}
+                        size={16}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#737784]"
                       />
                       <input
                         id="fullName"
@@ -226,8 +308,8 @@ export default function RegisterPage() {
                         maxLength={160}
                         value={fullName}
                         onChange={(event) => setFullName(event.target.value)}
-                        placeholder="Nguyễn Văn An"
-                        className="h-12 w-full rounded-lg border border-[#dfe5ef] bg-[#f8f9fc] pl-11 pr-4 text-sm text-[#172033] outline-none transition placeholder:text-[#a0a9b7] focus:border-[#0f52ba] focus:bg-white focus:ring-4 focus:ring-[#0f52ba]/10"
+                        placeholder="Ví dụ: Nguyễn Thu Hà"
+                        className="h-12 w-full rounded-xl border border-transparent bg-[#F8F9FF] py-2.5 pl-10 pr-3 text-sm text-[#0B1C30] outline-none transition placeholder:text-[#C3C6D5] focus:border-[#0F52BA]/40 focus:bg-white focus:ring-2 focus:ring-[#0F52BA]/15"
                       />
                     </div>
                   </div>
@@ -235,15 +317,15 @@ export default function RegisterPage() {
                   <div>
                     <label
                       htmlFor="email"
-                      className="mb-2 block text-sm font-medium text-[#303c50]"
+                      className="mb-1.5 block text-sm font-medium text-[#0B1C30]"
                     >
-                      Email
+                      Email cá nhân <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <Mail
                         aria-hidden="true"
-                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#98a3b4]"
-                        size={18}
+                        size={16}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#737784]"
                       />
                       <input
                         id="email"
@@ -254,151 +336,179 @@ export default function RegisterPage() {
                         maxLength={320}
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
-                        placeholder="ten@email.com"
-                        className="h-12 w-full rounded-lg border border-[#dfe5ef] bg-[#f8f9fc] pl-11 pr-4 text-sm text-[#172033] outline-none transition placeholder:text-[#a0a9b7] focus:border-[#0f52ba] focus:bg-white focus:ring-4 focus:ring-[#0f52ba]/10"
+                        placeholder="ha.nguyen@email.com"
+                        className="h-12 w-full rounded-xl border border-transparent bg-[#F8F9FF] py-2.5 pl-10 pr-3 text-sm text-[#0B1C30] outline-none transition placeholder:text-[#C3C6D5] focus:border-[#0F52BA]/40 focus:bg-white focus:ring-2 focus:ring-[#0F52BA]/15"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label
-                        htmlFor="password"
-                        className="mb-2 block text-sm font-medium text-[#303c50]"
-                      >
-                        Mật khẩu
-                      </label>
-                      <div className="relative">
-                        <LockKeyhole
-                          aria-hidden="true"
-                          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#98a3b4]"
-                          size={17}
-                        />
-                        <input
-                          id="password"
-                          name="password"
-                          type={showPassword ? "text" : "password"}
-                          autoComplete="new-password"
-                          required
-                          minLength={8}
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                          placeholder="Ít nhất 8 ký tự"
-                          className="h-12 w-full rounded-lg border border-[#dfe5ef] bg-[#f8f9fc] pl-10 pr-10 text-sm text-[#172033] outline-none transition placeholder:text-[#a0a9b7] focus:border-[#0f52ba] focus:bg-white focus:ring-4 focus:ring-[#0f52ba]/10"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((visible) => !visible)}
-                          className="absolute right-2 top-1/2 flex h-9 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#8591a4] transition hover:bg-[#edf2fa] hover:text-[#34445e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f52ba]"
-                          aria-label={
-                            showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"
-                          }
-                          aria-pressed={showPassword}
-                        >
-                          {showPassword ? (
-                            <EyeOff aria-hidden="true" size={17} />
-                          ) : (
-                            <Eye aria-hidden="true" size={17} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label
-                        htmlFor="confirmPassword"
-                        className="mb-2 block text-sm font-medium text-[#303c50]"
-                      >
-                        Xác nhận mật khẩu
-                      </label>
-                      <div className="relative">
-                        <LockKeyhole
-                          aria-hidden="true"
-                          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#98a3b4]"
-                          size={17}
-                        />
-                        <input
-                          id="confirmPassword"
-                          name="confirmPassword"
-                          type={showConfirmPassword ? "text" : "password"}
-                          autoComplete="new-password"
-                          required
-                          minLength={8}
-                          value={confirmPassword}
-                          onChange={(event) =>
-                            setConfirmPassword(event.target.value)
-                          }
-                          placeholder="Nhập lại mật khẩu"
-                          className="h-12 w-full rounded-lg border border-[#dfe5ef] bg-[#f8f9fc] pl-10 pr-10 text-sm text-[#172033] outline-none transition placeholder:text-[#a0a9b7] focus:border-[#0f52ba] focus:bg-white focus:ring-4 focus:ring-[#0f52ba]/10"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowConfirmPassword((visible) => !visible)
-                          }
-                          className="absolute right-2 top-1/2 flex h-9 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#8591a4] transition hover:bg-[#edf2fa] hover:text-[#34445e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f52ba]"
-                          aria-label={
-                            showConfirmPassword
-                              ? "Ẩn mật khẩu xác nhận"
-                              : "Hiện mật khẩu xác nhận"
-                          }
-                          aria-pressed={showConfirmPassword}
-                        >
-                          {showConfirmPassword ? (
-                            <EyeOff aria-hidden="true" size={17} />
-                          ) : (
-                            <Eye aria-hidden="true" size={17} />
-                          )}
-                        </button>
-                      </div>
+                  <div>
+                    <label
+                      htmlFor="phone"
+                      className="mb-1.5 block text-sm font-medium text-[#0B1C30]"
+                    >
+                      Số điện thoại <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone
+                        aria-hidden="true"
+                        size={16}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#737784]"
+                      />
+                      <input
+                        id="phone"
+                        name="phone"
+                        type="tel"
+                        autoComplete="tel"
+                        required
+                        maxLength={32}
+                        value={phone}
+                        onChange={(event) => setPhone(event.target.value)}
+                        placeholder="0912 345 678"
+                        className="h-12 w-full rounded-xl border border-transparent bg-[#F8F9FF] py-2.5 pl-10 pr-3 text-sm text-[#0B1C30] outline-none transition placeholder:text-[#C3C6D5] focus:border-[#0F52BA]/40 focus:bg-white focus:ring-2 focus:ring-[#0F52BA]/15"
+                      />
                     </div>
                   </div>
 
-                  {error && (
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <label
+                        htmlFor="password"
+                        className="block text-sm font-medium text-[#0B1C30]"
+                      >
+                        Mật khẩu bảo mật <span className="text-red-500">*</span>
+                      </label>
+                      <span
+                        className={`text-xs font-semibold ${
+                          passwordStrengthLabel === "Mạnh"
+                            ? "text-[#006A61]"
+                            : passwordStrengthLabel === "Chưa nhập"
+                              ? "text-[#98A3B4]"
+                              : "text-[#0F52BA]"
+                        }`}
+                      >
+                        {passwordStrengthLabel}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Lock
+                        aria-hidden="true"
+                        size={16}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#737784]"
+                      />
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Tối thiểu 8 ký tự, gồm số & chữ hoa"
+                        className="h-12 w-full rounded-xl border border-transparent bg-[#F8F9FF] py-2.5 pl-10 pr-11 text-sm text-[#0B1C30] outline-none transition placeholder:text-[#C3C6D5] focus:border-[#0F52BA]/40 focus:bg-white focus:ring-2 focus:ring-[#0F52BA]/15"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((value) => !value)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#737784] transition hover:text-[#0B1C30]"
+                        aria-label={
+                          showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"
+                        }
+                      >
+                        {showPassword ? (
+                          <EyeOff aria-hidden="true" size={16} />
+                        ) : (
+                          <Eye aria-hidden="true" size={16} />
+                        )}
+                      </button>
+                    </div>
+
+                    <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {passwordChecks.map((rule) => (
+                        <li
+                          key={rule.id}
+                          className="inline-flex items-center gap-2 text-xs text-[#68758B]"
+                        >
+                          <span
+                            className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                              rule.passed
+                                ? "border-[#006A61] bg-[#006A61] text-white"
+                                : "border-[#C3C6D5] bg-white"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {rule.passed ? (
+                              <Check size={10} strokeWidth={3} />
+                            ) : null}
+                          </span>
+                          {rule.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <label className="flex items-start gap-3 rounded-xl bg-[#F8F9FF] px-3.5 py-3 text-sm leading-5 text-[#68758B]">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(event) => setAgreed(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-[#C3C6D5] text-[#003C90] focus:ring-[#0F52BA]"
+                    />
+                    <span>
+                      Tôi đồng ý với{" "}
+                      <span className="font-semibold text-[#003C90]">
+                        Điều khoản sử dụng
+                      </span>{" "}
+                      và{" "}
+                      <span className="font-semibold text-[#003C90]">
+                        Chính sách bảo vệ dữ liệu cá nhân
+                      </span>{" "}
+                      của Tuyển dụng nhanh.
+                    </span>
+                  </label>
+
+                  {error ? (
                     <p
-                      className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                      className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
                       role="alert"
                     >
                       {error}
                     </p>
-                  )}
+                  ) : null}
 
-                  <Button
+                  <button
                     type="submit"
-                    className="h-12 w-full rounded-lg bg-[#0f52ba] text-sm font-semibold text-white shadow-[0_8px_18px_-8px_rgba(15,82,186,0.7)] hover:bg-[#0c469f] focus-visible:ring-[#0f52ba]"
                     disabled={isSubmitting}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#003C90] text-sm font-semibold text-white transition hover:bg-[#0F52BA] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSubmitting ? (
-                      <>
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="mr-2 animate-spin"
-                          size={18}
-                        />
-                        Đang tạo tài khoản...
-                      </>
-                    ) : (
-                      <>
-                        Tạo tài khoản
-                        <ArrowRight
-                          aria-hidden="true"
-                          className="ml-2"
-                          size={18}
-                        />
-                      </>
-                    )}
-                  </Button>
+                    {isSubmitting
+                      ? "Đang tạo tài khoản..."
+                      : "Tạo tài khoản Ứng viên"}
+                    {!isSubmitting ? (
+                      <ArrowRight aria-hidden="true" size={16} />
+                    ) : null}
+                  </button>
                 </form>
 
-                <p className="mt-5 text-center text-xs leading-5 text-[#7c8799]">
-                  Là doanh nghiệp?{" "}
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-[#68758B]">
+                    Đã có tài khoản?{" "}
+                    <Link
+                      href="/"
+                      className="font-semibold text-[#0F52BA] hover:text-[#003C90]"
+                    >
+                      Đăng nhập ngay
+                    </Link>
+                  </p>
                   <Link
                     href="/register/recruiter"
-                    className="font-semibold text-[#0f52ba] hover:text-[#0c469f]"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#006A61] hover:text-[#004F48]"
                   >
-                    Đăng ký nhà tuyển dụng
+                    <Building2 aria-hidden="true" size={16} />
+                    Đăng ký Doanh nghiệp
                   </Link>
-                </p>
+                </div>
               </>
             )}
           </div>

@@ -17,8 +17,34 @@ export class ApplicationsMessageController {
   }
 
   @MessagePattern({ cmd: "applications.list" })
-  list(@Payload() actor: Parameters<ApplicationsService["list"]>[0]) {
-    return this.applications.list(actor);
+  list(
+    @Payload()
+    payload:
+      | import("../common/bootstrap").Actor
+      | {
+          actor: import("../common/bootstrap").Actor;
+          jobId?: string;
+          status?: string;
+          search?: string;
+          page?: string;
+          pageSize?: string;
+        },
+  ) {
+    if (payload && typeof payload === "object" && "actor" in payload) {
+      const { actor, ...query } = payload;
+      return this.applications.list(actor, query);
+    }
+    return this.applications.list(
+      payload as import("../common/bootstrap").Actor,
+    );
+  }
+
+  @MessagePattern({ cmd: "applications.get" })
+  get(
+    @Payload()
+    payload: { actor: import("../common/bootstrap").Actor; id: string },
+  ) {
+    return this.applications.get(payload);
   }
 
   @MessagePattern({ cmd: "applications.dashboard" })
