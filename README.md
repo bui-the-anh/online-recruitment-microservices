@@ -4,6 +4,8 @@ CareerLink kết nối Ứng viên (Candidate) với Nhà tuyển dụng (Recrui
 thời cung cấp cho Quản trị viên (Admin) các công cụ xác minh doanh nghiệp,
 kiểm duyệt tin tuyển dụng và quản lý trạng thái tài khoản. Tài liệu nghiệp vụ,
 kiến trúc, cấu trúc dữ liệu và hướng dẫn chạy dự án được tập trung tại README này.
+Hướng dẫn chạy nhanh bằng Docker + tài khoản demo: xem
+[`README-QUICKSTART.md`](./README-QUICKSTART.md).
 
 ## 1. Phạm vi và nghiệp vụ
 
@@ -11,9 +13,9 @@ kiến trúc, cấu trúc dữ liệu và hướng dẫn chạy dự án đượ
 
 | Vai trò | Nghiệp vụ |
 | --- | --- |
-| **Candidate — Ứng viên** | Đăng ký/đăng nhập; quản lý hồ sơ cá nhân; tìm kiếm, lọc và xem tin tuyển dụng đã công khai; ứng tuyển kèm CV riêng cho từng đơn; xem hồ sơ đã gửi và theo dõi trạng thái; nhận thông báo. |
-| **Recruiter — Nhà tuyển dụng** | Đăng ký; tạo và cập nhật hồ sơ công ty; theo dõi xác minh; sau khi tài khoản hoạt động và được xác minh thì tạo, chỉnh sửa, đóng tin; theo dõi kiểm duyệt; xem ứng viên/CV của tin thuộc quyền quản lý; cập nhật trạng thái hồ sơ ứng tuyển; xem số liệu tổng hợp. |
-| **Admin — Quản trị viên** | Xem dashboard và danh sách chờ xử lý; xác minh/từ chối xác minh Recruiter; duyệt/từ chối tin; khóa/mở khóa Recruiter; xem trạng thái tài khoản; các thao tác quản trị được ghi vào nhật ký. |
+| **Candidate — Ứng viên** | Đăng ký/đăng nhập; quản lý hồ sơ cá nhân; tìm kiếm, lọc và xem tin/công ty công khai; ứng tuyển kèm CV (upload file); theo dõi đơn và trạng thái; nhận thông báo. |
+| **Recruiter — Nhà tuyển dụng** | Đăng ký; xem/sửa hồ sơ công ty (logo, cover, gallery, văn phòng…); theo dõi xác minh; sau khi `ACTIVE` + `VERIFIED` thì tạo/sửa/đóng tin; quản lý pipeline ứng viên; đổi mật khẩu; tùy chọn thông báo; quản lý phiên đăng nhập; xem dashboard. |
+| **Admin — Quản trị viên** | Dashboard; hàng đợi xác minh Recruiter và duyệt tin; khóa/mở khóa Recruiter; nhật ký audit; cài đặt thông báo/phiên/mật khẩu. |
 
 Ẩn nút trên giao diện không thay thế cho xác thực, phân quyền, kiểm tra quyền sở
 hữu và kiểm tra điều kiện nghiệp vụ ở Backend.
@@ -21,7 +23,7 @@ hữu và kiểm tra điều kiện nghiệp vụ ở Backend.
 ### 1.2 Quy trình xác minh Recruiter
 
 1. Recruiter đăng ký; tài khoản có `verificationStatus = PENDING_VERIFICATION`.
-2. Recruiter gửi thông tin doanh nghiệp qua hồ sơ công ty.
+2. Recruiter gửi thông tin doanh nghiệp qua hồ sơ công ty (`PUT /api/companies/me`).
 3. Admin rà soát hồ sơ và chọn `VERIFIED` hoặc `REJECTED`.
 4. Chỉ Recruiter có `accountStatus = ACTIVE` **và**
    `verificationStatus = VERIFIED` mới được đăng tin.
@@ -39,9 +41,10 @@ hữu và kiểm tra điều kiện nghiệp vụ ở Backend.
 
 ### 1.4 Quy trình ứng tuyển
 
-1. Candidate xem tin `APPROVED` và gửi `jobId`, `cvUrl`, thư giới thiệu tùy chọn.
-2. Mỗi đơn lưu CV tại thời điểm ứng tuyển; CV trong hồ sơ Candidate không tự
-   động thay thế CV của một đơn đã gửi.
+1. Candidate xem tin `APPROVED`, upload CV lên Supabase Storage
+   (`POST /api/uploads/cv`), rồi gửi `jobId`, `cvUrl`, thư giới thiệu tùy chọn.
+2. Mỗi đơn lưu CV tại thời điểm ứng tuyển; cập nhật hồ sơ Candidate không thay
+   thế CV của đơn đã gửi.
 3. Một Candidate chỉ được nộp một đơn cho mỗi tin tuyển dụng.
 4. Recruiter chỉ xem hồ sơ ứng tuyển thuộc các tin do mình quản lý.
 5. Thay đổi trạng thái hợp lệ:
@@ -53,6 +56,9 @@ hữu và kiểm tra điều kiện nghiệp vụ ở Backend.
    | `INTERVIEW` | `ACCEPTED`, `REJECTED` |
    | `ACCEPTED`, `REJECTED` | Trạng thái kết thúc |
 
+   Khi chuyển sang `INTERVIEW`, Recruiter có thể gửi
+   `interviewScheduledAt` và `interviewDetails`.
+
 ### 1.5 Khóa và mở khóa Recruiter
 
 - Admin khóa bằng cách đặt `accountStatus = SUSPENDED`. Guard từ chối phiên
@@ -61,7 +67,17 @@ hữu và kiểm tra điều kiện nghiệp vụ ở Backend.
 - Mở khóa chuyển `SUSPENDED` về `ACTIVE`; `verificationStatus` không thay đổi.
 - Việc khóa tài khoản không tự động đổi trạng thái tin hay đơn ứng tuyển.
 
-### 1.6 Quy tắc bảo mật và quyền
+### 1.6 Cài đặt hệ thống (Admin / Recruiter)
+
+- Đổi mật khẩu (`POST /api/auth/change-password`): mật khẩu mới ≥ 8 ký tự, có
+  chữ hoa, chữ thường, số và ký tự đặc biệt.
+- Tùy chọn thông báo lưu trong `user_settings` (`GET`/`PATCH /api/settings`).
+  - Admin: tin chờ duyệt, Recruiter đăng ký mới, âm báo trình duyệt.
+  - Recruiter: ứng viên nộp đơn, Admin duyệt/từ chối tin, nhắc phỏng vấn, báo cáo tuần.
+- Quản lý phiên: liệt kê thiết bị/IP/UA từ `refresh_tokens`; thu hồi một phiên
+  hoặc tất cả phiên khác.
+
+### 1.7 Quy tắc bảo mật và quyền
 
 - Candidate chỉ đọc/quản lý hồ sơ và đơn ứng tuyển của chính mình.
 - Recruiter chỉ quản lý công ty, tin và ứng viên thuộc phạm vi của mình.
@@ -101,67 +117,71 @@ thay đổi kết quả xác minh.
 ```text
 .
 ├── apps/
-│   ├── web/                         # Next.js App Router, Tailwind CSS, shadcn/ui
-│   │   ├── app/                     # Trang chủ, đăng nhập, dashboard, việc làm
-│   │   ├── components/ui/           # Primitive Button/Card theo shadcn/ui
-│   │   └── lib/api.ts               # Axios, cookie credentials, refresh interceptor
+│   ├── web/                         # Next.js 15 App Router, Tailwind CSS
+│   │   ├── app/
+│   │   │   ├── page.tsx             # Đăng nhập (3 tab role + autofill demo)
+│   │   │   ├── register/            # Đăng ký Candidate / Recruiter
+│   │   │   ├── candidate/           # Tìm việc, apply, đơn, hồ sơ, công ty
+│   │   │   ├── recruiter/           # Dashboard, tin, ứng viên, công ty, settings
+│   │   │   └── admin/               # Dashboard, duyệt tin, Recruiter, audit, settings
+│   │   ├── components/              # Shell theo role, UI primitives
+│   │   └── lib/api.ts               # Axios + cookie credentials + refresh
 │   └── backend/                     # NestJS monorepo
-│       ├── prisma/schema.prisma     # PostgreSQL/Supabase schema
+│       ├── prisma/schema.prisma     # PostgreSQL / Supabase
 │       └── src/
-│           ├── common/              # Bootstrap, cookie/JWT guard, lỗi tiếng Việt
+│           ├── common/              # Guard JWT/cookie, lỗi tiếng Việt, Supabase upload
 │           ├── gateway.controller.ts
-│           ├── auth/                # Đăng ký, đăng nhập, refresh, Recruiter/Admin
+│           ├── auth/                # Auth, settings, sessions, Admin Recruiter
 │           ├── jobs/                # Công ty, tin, kiểm duyệt
-│           ├── applications/        # Ứng tuyển, CV, trạng thái
-│           ├── notifications/       # Lưu thông báo, Kafka consumer
+│           ├── applications/        # Ứng tuyển, pipeline trạng thái
+│           ├── notifications/       # Thông báo + Kafka consumer
 │           ├── events/              # Kafka producer
-│           └── services/            # Entry point cho từng tiến trình Nest
+│           └── services/            # Entry point từng microservice
+├── scripts/
+│   ├── api-smoke.mjs                # Smoke API 3 role
+│   └── api-e2e.mjs                  # E2E create→approve→apply→pipeline
+├── docker-compose.yml               # Kafka + Gateway + 4 services + Web
+├── README-QUICKSTART.md
 └── README.md
 ```
 
 ### 3.1 Thành phần
 
-- **Next.js** có màn đăng nhập, đăng ký ứng viên và đăng ký nhà tuyển dụng
-  responsive gọi API Gateway qua Axios (`withCredentials`), cùng các primitive
-  UI cơ bản. Đăng ký nhà tuyển dụng lần lượt gọi API tạo tài khoản và lưu hồ sơ
-  công ty; hồ sơ được chờ Admin xác minh. API tải giấy phép kinh doanh chưa được
-  tích hợp. Các màn hình nghiệp vụ khác chưa được triển khai. Token chỉ được
-  lưu trong cookie `HttpOnly`; không lưu access/refresh token trong
-  `localStorage`, `sessionStorage` hoặc JavaScript phía trình duyệt.
-- **NestJS API Gateway** cung cấp REST, xác minh cookie access token, kiểm tra
-  role/trạng thái tài khoản rồi chuyển tiếp yêu cầu đồng bộ qua TCP.
-- **Auth Service** quản lý tài khoản, xác thực, refresh token, trạng thái
-  Recruiter và các thao tác Admin liên quan.
-- **Job Service** quản lý công ty, tin tuyển dụng và kiểm duyệt.
-- **Application Service** quản lý hồ sơ ứng tuyển, CV theo từng đơn và chuyển
-  trạng thái hồ sơ.
-- **Notification Service** lưu thông báo, nhận sự kiện Kafka và phục vụ truy vấn.
-- **Apache Kafka-compatible broker** truyền sự kiện bất đồng bộ giữa các
-  service. Các topic hiện dùng: `recruiter.registered`, `recruiter.verified`,
+- **Next.js (port 3000)** — portal đầy đủ theo 3 role (xem mục 3.4). Gọi API
+  Gateway qua Axios (`withCredentials`). Token chỉ nằm trong cookie `HttpOnly`;
+  không lưu access/refresh token trong `localStorage` / `sessionStorage`.
+- **NestJS API Gateway (port 3001)** — REST, xác minh cookie access token, kiểm
+  tra role/trạng thái tài khoản, chuyển tiếp yêu cầu đồng bộ qua TCP tới các
+  service; xử lý upload CV/ảnh công ty lên Supabase Storage.
+- **Auth Service** — đăng ký/đăng nhập/refresh/logout, hồ sơ Candidate, settings,
+  đổi mật khẩu, phiên (`refresh_tokens` + meta thiết bị), thao tác Admin về
+  Recruiter/audit.
+- **Job Service** — công ty (brand, media, offices…), tin tuyển dụng, kiểm duyệt.
+- **Application Service** — đơn ứng tuyển, CV theo đơn, chuyển trạng thái pipeline.
+- **Notification Service** — lưu thông báo, consumer Kafka, API danh sách/đọc.
+- **Apache Kafka** — broker bất đồng bộ (trong Docker Compose: `apache/kafka`).
+  Topic: `recruiter.registered`, `recruiter.verified`,
   `recruiter.verification.rejected`, `recruiter.suspended`,
   `recruiter.reactivated`, `job.approved`, `job.rejected`,
-  `application.submitted`.
-- **Prisma + PostgreSQL** lưu dữ liệu. Schema hiện nằm trong một PostgreSQL
-  database trên Supabase; service sở hữu logic và bảng theo bounded context,
-  không truy vấn trực tiếp dữ liệu ngoài trách nhiệm nghiệp vụ.
+  `application.submitted`, `application.status.updated`.
+- **Prisma + PostgreSQL (Supabase)** — một database dùng chung; mỗi service sở
+  hữu logic theo bounded context, không truy vấn ngoài trách nhiệm nghiệp vụ.
 
-TCP chỉ bind vào `127.0.0.1` mặc định. Khi triển khai các service trên nhiều
-máy, cần đặt chúng trong private network và bổ sung xác thực/mã hóa giữa service;
-không expose các cổng TCP nội bộ ra Internet.
+TCP bind `0.0.0.0` trong Docker Compose (mạng nội bộ container). Không expose
+cổng TCP microservice ra Internet.
 
 ### 3.2 Xác thực, cookie và mật khẩu
 
-- Đăng ký/đăng nhập trả thông tin người dùng trong JSON; token chỉ được đặt vào
+- Đăng ký/đăng nhập trả thông tin người dùng trong JSON; token chỉ đặt vào
   cookie `HttpOnly`, `SameSite=Lax`.
-- Access token có thời hạn 15 phút; refresh token có thời hạn 7 ngày và được
-  xoay vòng mỗi lần làm mới phiên.
-- Refresh token thô chỉ tồn tại trong cookie; cơ sở dữ liệu chỉ lưu SHA-256
-  hash trong `refresh_tokens`. Đăng xuất thu hồi refresh token và xóa cookie.
-- Cookie bật `Secure` trong môi trường `production`. CORS chỉ cho phép origin
-  frontend được cấu hình và bật credentials.
-- Mật khẩu được băm bằng `bcryptjs` với cost factor 12; không lưu mật khẩu thô.
-- API Gateway tra cứu trạng thái tài khoản hiện hành cho mỗi yêu cầu riêng tư;
-  tài khoản vừa bị khóa sẽ không thể tiếp tục dùng access token cũ.
+- Access token 15 phút; refresh token 7 ngày, xoay vòng mỗi lần refresh.
+- DB chỉ lưu SHA-256 hash trong `refresh_tokens` kèm `user_agent`, `ip_address`,
+  `device_label` để quản lý phiên. Đăng xuất / revoke thu hồi token và xóa cookie.
+- Cookie bật `Secure` khi `NODE_ENV=production`. CORS chỉ cho phép origin
+  frontend cấu hình và bật credentials.
+- Mật khẩu băm bằng `bcryptjs` (cost 12).
+- Gateway kiểm tra trạng thái tài khoản trên mỗi request riêng tư; tài khoản vừa
+  bị khóa không tiếp tục dùng access token cũ.
 
 ### 3.3 Chuẩn lỗi tiếng Việt
 
@@ -179,25 +199,34 @@ Backend có exception filter toàn cục; lỗi API có cùng cấu trúc:
 }
 ```
 
-Các lỗi không nhận diện được không trả stack trace hoặc thông báo tiếng Anh cho
-client. Frontend dùng `formatApiError` và Axios interceptor tập trung để chuyển
-lỗi API, lỗi mạng và lỗi giao diện thành thông báo tiếng Việt.
+Không trả stack trace hay thông báo tiếng Anh thô cho client. Frontend dùng
+`formatApiError` và Axios interceptor để hiển thị tiếng Việt.
+
+### 3.4 Giao diện theo role (đã triển khai)
+
+| Role | Route chính |
+| --- | --- |
+| Public | `/` đăng nhập · `/register` · `/register/recruiter` |
+| Candidate | `/candidate` · `/candidate/jobs/:id` · `/candidate/jobs/:id/apply` · `/candidate/applications` · `/candidate/profile` · `/candidate/companies` |
+| Recruiter | `/recruiter` · `/recruiter/jobs` · `/recruiter/jobs/new` · `/recruiter/candidates` · `/recruiter/company` · `/recruiter/company/edit` · `/recruiter/settings` |
+| Admin | `/admin` · `/admin/jobs` · `/admin/recruiters` · `/admin/recruiters/:id` · `/admin/audit` · `/admin/settings` |
 
 ## 4. Cấu trúc bảng PostgreSQL
 
-Tên bảng thực tế dùng dạng `snake_case`; UUID là khóa chính; các cột thời gian
-dùng `TIMESTAMPTZ`. Enum Prisma được lưu thành PostgreSQL enum.
+Tên bảng thực tế dùng `snake_case`; UUID là khóa chính; thời gian dùng
+`TIMESTAMPTZ`. Enum Prisma map sang PostgreSQL enum.
 
 | Bảng | Cột chính | Quan hệ / ràng buộc |
 | --- | --- | --- |
-| `users` | `id`, `email`, `password_hash`, `full_name`, `role`, `account_status`, `verification_status`, `created_at`, `updated_at` | Email duy nhất; `role` là `CANDIDATE`, `RECRUITER`, `ADMIN`; trạng thái xác minh chỉ áp dụng cho Recruiter. |
-| `candidate_profiles` | `id`, `user_id`, `phone`, `location`, `headline`, `created_at`, `updated_at` | `user_id` duy nhất, FK `users`; xóa User thì xóa hồ sơ. |
-| `companies` | `id`, `recruiter_id`, `name`, `description`, `website`, `industry`, `location`, `verification_details`, `created_at`, `updated_at` | Mỗi Recruiter sở hữu tối đa một công ty; FK `users`. |
-| `jobs` | `id`, `company_id`, `recruiter_id`, `title`, `description`, `requirements`, `location`, `employment_type`, `salary_min`, `salary_max`, `currency`, `status`, `rejection_note`, `published_at`, `expires_at`, `created_at`, `updated_at` | FK `companies` và `users`; chỉ tin `APPROVED` công khai; chỉ Recruiter sở hữu được chỉnh sửa. |
-| `applications` | `id`, `job_id`, `candidate_id`, `cv_url`, `cover_letter`, `status`, `created_at`, `updated_at` | FK `jobs` và `users`; duy nhất cặp `(job_id, candidate_id)`; CV được chụp theo từng đơn. |
-| `notifications` | `id`, `user_id`, `type`, `title`, `body`, `payload`, `read_at`, `created_at` | FK `users`; index theo người nhận/trạng thái đọc/thời điểm. |
-| `audit_logs` | `id`, `actor_id`, `target_id`, `action`, `entity_type`, `entity_id`, `details`, `created_at` | Ghi người thao tác, đối tượng và chi tiết; phục vụ kiểm toán. |
-| `refresh_tokens` | `id`, `user_id`, `token_hash`, `expires_at`, `revoked_at`, `created_at` | Chỉ lưu hash SHA-256; `token_hash` duy nhất; FK `users`; index người dùng/thời hạn. |
+| `users` | `id`, `email`, `password_hash`, `full_name`, `role`, `account_status`, `verification_status`, `created_at`, `updated_at` | Email duy nhất; role `CANDIDATE` / `RECRUITER` / `ADMIN`. |
+| `user_settings` | `user_id`, prefs thông báo Admin/Recruiter, `updated_at` | 1–1 với `users`; cascade delete. |
+| `candidate_profiles` | `user_id`, `phone`, `location`, `headline`, `bio`, skills/JSON, mức lương kỳ vọng… | 1–1 với Candidate. |
+| `companies` | `recruiter_id`, `name`, brand/legal, mô tả, website, industry, offices/JSON, logo/cover/gallery URL, MST, liên hệ, license document… | Mỗi Recruiter tối đa một công ty. |
+| `jobs` | `company_id`, `recruiter_id`, `title`, mô tả/yêu cầu/phúc lợi, `employment_type`, `work_mode`, skills/JSON, lương, `status`, `rejection_note`, `published_at`, `expires_at` | Chỉ tin `APPROVED` công khai. |
+| `applications` | `job_id`, `candidate_id`, `cv_url`, `cover_letter`, `status`, `interview_scheduled_at`, `interview_details` | Unique `(job_id, candidate_id)`. |
+| `notifications` | `user_id`, `type`, `title`, `body`, `payload`, `read_at` | Index theo người nhận / đọc / thời gian. |
+| `audit_logs` | `actor_id`, `target_id`, `action`, `entity_type`, `entity_id`, `details` | Nhật ký thao tác quản trị. |
+| `refresh_tokens` | `user_id`, `token_hash`, `expires_at`, `revoked_at`, `user_agent`, `ip_address`, `device_label` | Chỉ lưu hash SHA-256; phục vụ session list/revoke. |
 
 ### 4.1 Enum dữ liệu
 
@@ -205,14 +234,15 @@ dùng `TIMESTAMPTZ`. Enum Prisma được lưu thành PostgreSQL enum.
 - `AccountStatus`: `ACTIVE`, `SUSPENDED`
 - `VerificationStatus`: `PENDING_VERIFICATION`, `VERIFIED`, `REJECTED`
 - `JobStatus`: `PENDING`, `APPROVED`, `REJECTED`, `CLOSED`
-- `EmploymentType`: `FULL_TIME`, `PART_TIME`, `CONTRACT`, `INTERNSHIP`,
-  `TEMPORARY`
+- `EmploymentType`: `FULL_TIME`, `PART_TIME`, `CONTRACT`, `INTERNSHIP`, `TEMPORARY`
+- `WorkMode`: `ONSITE`, `HYBRID`, `REMOTE`
 - `ApplicationStatus`: `APPLIED`, `VIEWED`, `INTERVIEW`, `ACCEPTED`, `REJECTED`
 
 ### 4.2 ERD rút gọn
 
 ```text
 User 1──0..1 CandidateProfile
+User 1──0..1 UserSettings
 User 1──0..1 Company 1──N Job 1──N Application N──1 User(Candidate)
 User 1──N Notification
 User 1──N RefreshToken
@@ -221,151 +251,147 @@ User(Admin) 1──N AuditLog(actor); User(target) 0..N AuditLog
 
 ## 5. REST API
 
-Base URL mặc định: `http://localhost:3001`. Các endpoint nghiệp vụ được đặt
-dưới `/api`; login/register/refresh/logout dùng cookie, không nhận hoặc trả
-token trong body từ Gateway.
+Base URL mặc định: `http://localhost:3001`. Endpoint nghiệp vụ dưới `/api`.
+Login / register / refresh / logout dùng cookie; Gateway không trả token trong body.
 
 | Method | Endpoint | Quyền | Mục đích |
 | --- | --- | --- | --- |
-| `GET` | `/health` | Công khai | Kiểm tra DB và kết nối các service TCP. |
+| `GET` | `/health` | Công khai | DB + trạng thái từng service TCP (`ok` / `degraded`). |
 | `POST` | `/api/auth/register` | Công khai | Đăng ký Candidate hoặc Recruiter. |
-| `POST` | `/api/auth/login` | Công khai | Đăng nhập và đặt cookie phiên. |
-| `POST` | `/api/auth/refresh` | Cookie refresh | Xoay vòng phiên và đặt lại cookie. |
-| `POST` | `/api/auth/logout` | Công khai | Thu hồi refresh token và xóa cookie. |
-| `GET` | `/api/auth/me` | Đã đăng nhập | Lấy người dùng hiện tại. |
-| `GET` | `/api/candidate/profile` | Candidate | Xem hồ sơ cá nhân. |
-| `PATCH` | `/api/candidate/profile` | Candidate | Cập nhật tên, số điện thoại, địa điểm và tiêu đề hồ sơ. |
-| `GET` | `/api/jobs` | Công khai | Danh sách tin đã duyệt; hỗ trợ `search`, `location`, `employmentType`, `page`. |
+| `POST` | `/api/auth/login` | Công khai | Đăng nhập, đặt cookie phiên. |
+| `POST` | `/api/auth/refresh` | Cookie refresh | Xoay vòng phiên. |
+| `POST` | `/api/auth/logout` | Đã đăng nhập | Thu hồi refresh token, xóa cookie. |
+| `GET` | `/api/auth/me` | Đã đăng nhập | User hiện tại. |
+| `POST` | `/api/auth/change-password` | Đã đăng nhập | Đổi mật khẩu. |
+| `GET` | `/api/auth/sessions` | Đã đăng nhập | Danh sách phiên đang hoạt động. |
+| `POST` | `/api/auth/sessions/:id/revoke` | Đã đăng nhập | Đăng xuất một thiết bị. |
+| `POST` | `/api/auth/sessions/revoke-others` | Đã đăng nhập | Đăng xuất mọi thiết bị khác. |
+| `GET` / `PATCH` | `/api/settings` | Đã đăng nhập | Đọc/cập nhật tùy chọn thông báo. |
+| `GET` / `PATCH` | `/api/candidate/profile` | Candidate | Hồ sơ cá nhân. |
+| `GET` | `/api/jobs` | Công khai | Tin đã duyệt (`search`, `location`, `employmentType`, `page`…). |
 | `GET` | `/api/jobs/:id` | Công khai | Chi tiết tin đã duyệt. |
-| `PUT` | `/api/companies/me` | Recruiter | Tạo/cập nhật hồ sơ công ty. |
-| `POST` | `/api/jobs` | Recruiter đã xác minh | Tạo tin chờ kiểm duyệt. |
-| `GET` | `/api/recruiter/jobs` | Recruiter | Danh sách tin của nhà tuyển dụng hiện tại. |
-| `PATCH` | `/api/jobs/:id` | Recruiter sở hữu tin | Chỉnh tin bị từ chối/chờ duyệt hoặc đóng tin đã duyệt. |
-| `POST` | `/api/applications` | Candidate | Ứng tuyển và đính kèm CV. |
-| `GET` | `/api/applications` | Candidate/Recruiter/Admin | Danh sách hồ sơ theo phạm vi quyền. |
-| `PATCH` | `/api/applications/:id/status` | Recruiter sở hữu tin | Chuyển trạng thái xử lý hồ sơ. |
-| `GET` | `/api/notifications` | Đã đăng nhập | Danh sách thông báo của người dùng. |
-| `PATCH` | `/api/notifications/:id/read` | Đã đăng nhập | Đánh dấu thông báo của mình đã đọc. |
-| `GET` | `/api/dashboard` | Đã đăng nhập | Thống kê tổng hợp theo vai trò. |
-| `GET` | `/api/admin/recruiters` | Admin | Danh sách Recruiter và tình trạng xác minh. |
-| `GET` | `/api/admin/audit-logs` | Admin | Nhật ký thao tác quản trị (xác minh, khóa, duyệt tin). |
-| `GET` | `/api/admin/jobs` | Admin | Hàng đợi tin; mặc định lọc `PENDING`. |
-| `PATCH` | `/api/admin/recruiters/:id/verification` | Admin | Xác minh hoặc từ chối xác minh. |
-| `PATCH` | `/api/admin/recruiters/:id/account-status` | Admin | Khóa hoặc mở khóa tài khoản. |
-| `PATCH` | `/api/admin/jobs/:id/review` | Admin | Duyệt/từ chối tin; từ chối cần `rejectionNote`. |
+| `GET` | `/api/companies` | Công khai | Danh sách công ty. |
+| `GET` | `/api/companies/featured` | Công khai | Công ty nổi bật. |
+| `GET` | `/api/companies/:id` | Công khai | Chi tiết công ty. |
+| `GET` / `PUT` | `/api/companies/me` | Recruiter | Xem / tạo-cập nhật hồ sơ công ty (kèm media URL). |
+| `POST` | `/api/jobs` | Recruiter đã xác minh | Tạo tin `PENDING`. |
+| `GET` | `/api/recruiter/jobs` | Recruiter | Tin của Recruiter hiện tại. |
+| `PATCH` | `/api/jobs/:id` | Recruiter sở hữu | Sửa tin chờ/từ chối hoặc đóng tin đã duyệt. |
+| `POST` | `/api/uploads/cv` | Candidate | Upload CV (PDF/DOC/DOCX ≤ 5MB) → Supabase. |
+| `POST` | `/api/uploads/company` | Recruiter | Upload ảnh công ty (JPEG/PNG/WebP/GIF ≤ 8MB). |
+| `POST` | `/api/applications` | Candidate | Nộp đơn (`jobId`, `cvUrl`, `coverLetter?`). |
+| `GET` | `/api/applications` | Candidate/Recruiter/Admin | Danh sách theo phạm vi quyền. |
+| `GET` | `/api/applications/:id` | Theo quyền | Chi tiết đơn (Recruiter xem có thể auto `APPLIED`→`VIEWED`). |
+| `PATCH` | `/api/applications/:id/status` | Recruiter sở hữu tin | Chuyển trạng thái pipeline. |
+| `GET` | `/api/notifications` | Đã đăng nhập | Danh sách thông báo. |
+| `PATCH` | `/api/notifications/:id/read` | Đã đăng nhập | Đánh dấu đã đọc. |
+| `GET` | `/api/dashboard` | Đã đăng nhập | Thống kê theo role. |
+| `GET` | `/api/admin/recruiters` | Admin | Danh sách Recruiter / lọc xác minh. |
+| `GET` | `/api/admin/recruiters/:id` | Admin | Chi tiết Recruiter + công ty. |
+| `PATCH` | `/api/admin/recruiters/:id/verification` | Admin | Xác minh / từ chối. |
+| `PATCH` | `/api/admin/recruiters/:id/account-status` | Admin | Khóa / mở khóa. |
+| `GET` | `/api/admin/jobs` | Admin | Hàng đợi tin (mặc định `PENDING`). |
+| `PATCH` | `/api/admin/jobs/:id/review` | Admin | Duyệt / từ chối (cần `rejectionNote` khi từ chối). |
+| `GET` | `/api/admin/audit-logs` | Admin | Nhật ký thao tác quản trị. |
 
-CV hiện được nhận dưới dạng URL; tích hợp tải tệp và lưu trữ riêng tư (ví dụ
-Supabase Storage), kiểm tra MIME/kích thước và URL ký hạn cần được cấu hình trước
-khi dùng với CV thật.
+Kiểm thử tự động: `node scripts/api-smoke.mjs`, `node scripts/api-e2e.mjs`
+(Gateway phải đang chạy).
 
-## 6. Cài đặt và chạy local
+## 6. Cài đặt và chạy
 
-### 6.1 Yêu cầu
+### 6.1 Cách khuyến nghị: Docker Compose
 
-- Node.js 20 trở lên và npm.
-- Một PostgreSQL database truy cập được; Supabase pooler có thể cấu hình qua
-  `DATABASE_URL`.
-- Một Kafka-compatible broker đang chạy và truy cập được từ máy chạy ứng dụng.
-  Backend dùng broker này để truyền sự kiện bất đồng bộ.
-
-### 6.2 Thiết lập biến môi trường
+Yêu cầu: Docker Desktop, file `.env` ở root monorepo.
 
 ```bash
-npm install
 cp .env.example .env
+# Điền DATABASE_URL, DIRECT_URL, JWT_SECRET, SUPABASE_*
+docker compose up --build
 ```
 
-Mở `.env` ở Codespace hoặc máy local, điền `DATABASE_URL` và đặt `JWT_SECRET`
-ngẫu nhiên có ít nhất 32 ký tự. Không commit `.env`, không dán thông tin đăng nhập vào source,
-README, log hoặc URL công khai. Ký tự đặc biệt trong username/password phải
-percent-encode; ví dụ dấu `@` nằm **trong mật khẩu** phải viết thành `%40` (dấu
-`@` phân tách userinfo với hostname vẫn để nguyên).
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:3000 |
+| API Gateway | http://localhost:3001 |
+| Health | http://localhost:3001/health |
 
-`DATABASE_URL` dùng kết nối PostgreSQL Supabase dạng:
+PostgreSQL = **Supabase cloud** (không chạy Postgres trong Compose). Kafka =
+container `careerlink-kafka`. Chi tiết tài khoản demo và troubleshooting: xem
+[`README-QUICKSTART.md`](./README-QUICKSTART.md).
 
-```text
-postgresql://postgres.<project-ref>:<password-đã-percent-encode>@<supabase-pooler-host>:5432/postgres?schema=public
-```
+DB production đã migrate/seed sẵn cho môi trường demo — máy mới thường **không
+cần** chạy migrate/seed khi chỉ chạy stack local với `.env` team cung cấp.
 
-Không đặt URL thật trong `.env.example`. Next.js mặc định gọi Gateway tại
-`http://localhost:3001/api`; nếu đổi địa chỉ, cấu hình
-`NEXT_PUBLIC_API_URL` trong môi trường chạy Next.js.
+### 6.2 Biến môi trường chính
 
-### 6.3 Migration và khởi chạy
+| Biến | Mục đích |
+| --- | --- |
+| `DATABASE_URL` | Pooler Supabase (thường `:6543` + `pgbouncer=true&connection_limit=1`) |
+| `DIRECT_URL` | Kết nối session/direct `:5432` (Prisma migrate) |
+| `JWT_SECRET` | ≥ 32 ký tự |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` | Upload CV & ảnh công ty |
+| `WEB_ORIGIN` | Origin frontend (CORS), mặc định `http://localhost:3000` |
+| `NEXT_PUBLIC_API_URL` | Base API phía Next (mặc định `http://localhost:3001/api`) |
+| `KAFKA_BROKERS` | Trong Compose: `kafka:9092` |
+
+Không commit `.env`. Ký tự đặc biệt trong password URL phải percent-encode
+(ví dụ `@` trong mật khẩu → `%40`).
+
+### 6.3 Migration / seed (khi cần)
 
 ```bash
 npm run db:generate
 npm run db:deploy --workspace @recruitment/backend
 ```
 
-`db:deploy` áp dụng các migration đã được tạo và phù hợp với Supabase/môi trường
-triển khai. Chỉ dùng `npm run db:migrate --workspace @recruitment/backend` cho
-môi trường phát triển local cần tạo migration mới.
-
-Ứng dụng Next.js và các tiến trình NestJS chạy trực tiếp trên máy local; dữ liệu
-PostgreSQL được lưu trên Supabase. Cấu hình `KAFKA_BROKERS` trong `.env` trỏ tới
-một Kafka-compatible broker đã được cấp sẵn và truy cập được. Repo không cài
-hay tự khởi chạy broker; cần có broker khả dụng để Notification Service khởi
-động và các nghiệp vụ phát sự kiện hoạt động đầy đủ. Đây là dịch vụ riêng, không
-phải PostgreSQL và không được khởi chạy cùng ứng dụng.
-
-Để tạo Admin ban đầu, đặt `ADMIN_EMAIL`, `ADMIN_FULL_NAME` và mật khẩu mạnh từ
-12 ký tự trong `.env`, sau đó chạy:
+Tạo Admin mới (email chưa tồn tại):
 
 ```bash
+# Đặt ADMIN_EMAIL, ADMIN_FULL_NAME, mật khẩu ≥ 12 ký tự trong .env
 npm run db:seed-admin --workspace @recruitment/backend
 ```
 
-Seed chỉ tạo tài khoản Admin nếu email chưa tồn tại; không tự nâng vai trò của
-một tài khoản đang có. Sau khi seed, xóa các giá trị `ADMIN_*` khỏi môi trường
-runtime.
+### 6.4 Chạy không Docker (tùy chọn)
 
-Khởi chạy frontend và toàn bộ backend từ thư mục gốc:
+Cần Node.js 20+, PostgreSQL (Supabase) và Kafka broker truy cập được:
 
 ```bash
+npm install
 npm run dev
 ```
 
-`npm run dev` chạy Next.js và năm tiến trình backend: API Gateway, Auth Service,
-Job Service, Application Service, Notification Service. API ở
-`http://localhost:3001`; giao diện ở `http://localhost:3000`. Endpoint
-`http://localhost:3001/health` trả trạng thái database và từng service.
+`npm run dev` chạy Next.js + Gateway + Auth + Jobs + Applications + Notifications.
 
-Mỗi tiến trình backend gọi Prisma `$connect` và truy vấn `SELECT 1` trước khi
-lắng nghe; thiếu `DATABASE_URL`, URL sai, Supabase không truy cập được hoặc
-database từ chối kết nối thì tiến trình kết thúc với mã lỗi và không mở cổng.
-Gateway cũng kiểm tra DB của chính nó. Startup log không in URL hay mật khẩu.
-Trong Codespace của dự án, kết nối Supabase đã được kiểm tra thành công; schema
-`public` ban đầu trống và migration Prisma `20261018000000_init` đã được triển
-khai. Migration tạo các bảng, enum, khóa ngoại và chỉ mục theo
-`apps/backend/prisma/schema.prisma`. Không đưa credential thật vào source code
-hoặc README.
-
-### 6.4 Build
+### 6.5 Build
 
 ```bash
 npm run build
-```
-
-Build lần lượt backend (bao gồm `prisma generate`) và frontend. Có thể chạy riêng:
-
-```bash
+# hoặc
 npm run build --workspace @recruitment/backend
 npm run build --workspace @recruitment/web
 ```
 
-## 7. Ghi chú vận hành
+## 7. Tài khoản demo (smoke / tester)
 
-- Không tạo tài khoản Admin qua đăng ký công khai hoặc dữ liệu client gửi lên;
-  dùng seed có kiểm soát ở mục 6.
-- Trước khi triển khai, đặt `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`,
-  `KAFKA_BROKERS`, `API_PORT`, địa chỉ/port TCP service và `JWT_SECRET` đúng
-  môi trường.
-- Dùng TLS cho frontend/API; cookie tự bật `Secure` khi `NODE_ENV=production`.
-- Dùng Supabase Storage riêng tư và URL ký hạn cho CV; không để file CV công
-  khai.
-- Với nhiều replica, cần chính sách Kafka retry/idempotency và transactional
-  outbox để tránh mất sự kiện khi database commit thành công nhưng broker tạm
-  thời gián đoạn.
-- Mỗi service đang dùng cùng Prisma schema/database cho bản khởi đầu. Khi mở
-  rộng độc lập, tách migration, quyền truy cập và database/schema theo service.
+Mật khẩu chung: **`Demo@123456`**
+
+| Role | Email | Redirect |
+| --- | --- | --- |
+| Ứng viên | `candidate@demo.vn` | `/candidate` |
+| Nhà tuyển dụng (đã xác minh) | `hr@vpay.demo` | `/recruiter` |
+| Quản trị | `admin@demo.vn` | `/admin` |
+
+Danh sách Candidate/Recruiter demo đầy đủ (pending / rejected / suspended): xem
+[`README-QUICKSTART.md`](./README-QUICKSTART.md).
+
+## 8. Ghi chú vận hành
+
+- Không tạo Admin qua đăng ký công khai; dùng seed có kiểm soát.
+- Trước khi deploy: đặt đúng `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`, `KAFKA_BROKERS`,
+  port TCP service và `JWT_SECRET`.
+- TLS cho frontend/API; cookie tự bật `Secure` khi `NODE_ENV=production`.
+- CV và ảnh công ty lưu trên Supabase Storage; cấu hình bucket + service role.
+- Nhiều replica: cần Kafka retry/idempotency (hoặc transactional outbox) để tránh
+  mất sự kiện khi DB commit thành công nhưng broker gián đoạn.
+- Bản khởi đầu dùng chung Prisma schema/database; khi scale độc lập, tách
+  migration và quyền truy cập theo service.
