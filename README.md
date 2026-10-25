@@ -3,9 +3,8 @@
 CareerLink kết nối Ứng viên (Candidate) với Nhà tuyển dụng (Recruiter), đồng
 thời cung cấp cho Quản trị viên (Admin) các công cụ xác minh doanh nghiệp,
 kiểm duyệt tin tuyển dụng và quản lý trạng thái tài khoản. Tài liệu nghiệp vụ,
-kiến trúc, cấu trúc dữ liệu và hướng dẫn chạy dự án được tập trung tại README này.
-Hướng dẫn chạy nhanh bằng Docker + tài khoản demo: xem
-[`README-QUICKSTART.md`](./README-QUICKSTART.md).
+kiến trúc, cấu trúc dữ liệu, hướng dẫn chạy Docker và tài khoản demo được tập
+trung tại README này.
 
 ## 1. Phạm vi và nghiệp vụ
 
@@ -141,7 +140,6 @@ thay đổi kết quả xác minh.
 │   ├── api-smoke.mjs                # Smoke API 3 role
 │   └── api-e2e.mjs                  # E2E create→approve→apply→pipeline
 ├── docker-compose.yml               # Kafka + Gateway + 4 services + Web
-├── README-QUICKSTART.md
 └── README.md
 ```
 
@@ -299,14 +297,32 @@ Kiểm thử tự động: `node scripts/api-smoke.mjs`, `node scripts/api-e2e.m
 
 ## 6. Cài đặt và chạy
 
+Làm việc trong thư mục monorepo:
+
+```text
+online-recruitment-microservices/
+```
+
+DB demo đã có sẵn trên **Supabase (production)** — máy mới thường chỉ cần clone,
+cấu hình `.env`, bật Docker, rồi đăng nhập bằng tài khoản mục 7 (không cần
+migrate/seed lại).
+
 ### 6.1 Cách khuyến nghị: Docker Compose
 
-Yêu cầu: Docker Desktop, file `.env` ở root monorepo.
+Yêu cầu: Docker Desktop đã bật; file `.env` ở root monorepo (cùng cấp
+`docker-compose.yml`).
 
 ```bash
 cp .env.example .env
-# Điền DATABASE_URL, DIRECT_URL, JWT_SECRET, SUPABASE_*
+# Điền DATABASE_URL, DIRECT_URL, JWT_SECRET, SUPABASE_* (lấy từ team / Supabase)
 docker compose up --build
+```
+
+Chạy nền:
+
+```bash
+docker compose up --build -d
+docker compose logs -f
 ```
 
 | Service | URL |
@@ -315,12 +331,12 @@ docker compose up --build
 | API Gateway | http://localhost:3001 |
 | Health | http://localhost:3001/health |
 
-PostgreSQL = **Supabase cloud** (không chạy Postgres trong Compose). Kafka =
-container `careerlink-kafka`. Chi tiết tài khoản demo và troubleshooting: xem
-[`README-QUICKSTART.md`](./README-QUICKSTART.md).
+Dừng: `docker compose down`.
 
-DB production đã migrate/seed sẵn cho môi trường demo — máy mới thường **không
-cần** chạy migrate/seed khi chỉ chạy stack local với `.env` team cung cấp.
+Sửa code trong `apps/web` / `apps/backend/src` → container tự reload (Windows đã
+bật polling). PostgreSQL = **Supabase cloud** (không chạy Postgres trong
+Compose). Kafka trong Compose = `apache/kafka` (`careerlink-kafka`). Upload CV /
+ảnh công ty → Supabase Storage.
 
 ### 6.2 Biến môi trường chính
 
@@ -375,14 +391,44 @@ npm run build --workspace @recruitment/web
 
 Mật khẩu chung: **`Demo@123456`**
 
-| Role | Email | Redirect |
-| --- | --- | --- |
-| Ứng viên | `candidate@demo.vn` | `/candidate` |
-| Nhà tuyển dụng (đã xác minh) | `hr@vpay.demo` | `/recruiter` |
-| Quản trị | `admin@demo.vn` | `/admin` |
+Mở http://localhost:3000 → chọn tab role → đăng nhập (tab autofill email demo).
 
-Danh sách Candidate/Recruiter demo đầy đủ (pending / rejected / suspended): xem
-[`README-QUICKSTART.md`](./README-QUICKSTART.md).
+| Role | Email | Mật khẩu | Redirect |
+| --- | --- | --- | --- |
+| **Ứng viên** | `candidate@demo.vn` | `Demo@123456` | `/candidate` |
+| **Nhà tuyển dụng** | `hr@vpay.demo` | `Demo@123456` | `/recruiter` |
+| **Quản trị** | `admin@demo.vn` | `Demo@123456` | `/admin` |
+
+### 7.1 Candidate khác
+
+| Email | Họ tên |
+| --- | --- |
+| `minh.an@demo.vn` | Lê Minh An |
+| `bao.ngoc@demo.vn` | Phạm Bảo Ngọc |
+| `hoang.nam@demo.vn` | Trần Hoàng Nam |
+| `thuy.linh@demo.vn` | Đỗ Thùy Linh |
+
+### 7.2 Recruiter — đã xác minh
+
+| Email | Công ty |
+| --- | --- |
+| `hr@vpay.demo` | FinTech V-Pay Vietnam *(khuyên dùng)* |
+| `talent@nexgen.demo` | NexGen Soft |
+| `careers@trustcorp.demo` | TrustCorp Capital |
+| `jobs@aivision.demo` | AI Vision Labs |
+| `hr@pixelcraft.demo` | PixelCraft Studio |
+| `hr@cloudnine.demo` | CloudNine Systems |
+| `talent@finpulse.demo` | FinPulse Analytics |
+
+### 7.3 Recruiter — chờ / từ chối / đình chỉ (test Admin)
+
+| Email | Công ty | Trạng thái |
+| --- | --- | --- |
+| `hr@orbitech.demo` | OrbiTech | `PENDING_VERIFICATION` |
+| `talent@cubeads.demo` | CubeAds Media | `PENDING_VERIFICATION` |
+| `people@freightly.demo` | Freightly Logistics | `PENDING_VERIFICATION` |
+| `compliance@shieldpay.demo` | ShieldPay Security | `REJECTED` |
+| `people@growthlab.demo` | GrowthLab Media | `SUSPENDED` |
 
 ## 8. Ghi chú vận hành
 
