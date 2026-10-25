@@ -43,14 +43,68 @@ async function ensureBucketPublic(bucket: string): Promise<void> {
     headers: serviceHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       public: true,
-      fileSizeLimit: 5242880,
+      fileSizeLimit: 10 * 1024 * 1024,
       allowedMimeTypes: [
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
       ],
     }),
   });
+}
+
+export async function uploadAssetToSupabase(input: {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+  folder: string;
+}): Promise<{ url: string; path: string; bucket: string }> {
+  const bucket = storageBucket();
+  await ensureBucketPublic(bucket);
+
+  const extension = input.originalName.includes(".")
+    ? input.originalName.slice(input.originalName.lastIndexOf(".")).toLowerCase()
+    : input.mimeType === "image/png"
+      ? ".png"
+      : input.mimeType === "image/webp"
+        ? ".webp"
+        : input.mimeType === "application/pdf"
+          ? ".pdf"
+          : ".jpg";
+  const safeBase = input.originalName
+    .replace(extension, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .slice(0, 80);
+  const path = `${input.folder}/${Date.now()}-${safeBase || "asset"}${extension}`;
+
+  const uploadRes = await fetch(
+    `${storageBaseUrl()}/object/${encodeURIComponent(bucket)}/${path
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/")}`,
+    {
+      method: "POST",
+      headers: serviceHeaders({
+        "Content-Type": input.mimeType,
+        "x-upsert": "false",
+      }),
+      body: new Uint8Array(input.buffer),
+    },
+  );
+
+  if (!uploadRes.ok) {
+    const detail = await uploadRes.text();
+    throw new BadRequestException(
+      `Không tải được tệp lên Storage: ${detail || uploadRes.statusText}`,
+    );
+  }
+
+  const publicUrl = `${requiredEnv("SUPABASE_URL").replace(/\/$/, "")}/storage/v1/object/public/${bucket}/${path}`;
+  return { url: publicUrl, path, bucket };
 }
 
 export async function uploadCvToSupabase(input: {

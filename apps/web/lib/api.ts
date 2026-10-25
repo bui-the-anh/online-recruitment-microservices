@@ -32,6 +32,15 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+api.interceptors.request.use((config) => {
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    if (config.headers) {
+      delete config.headers["Content-Type"];
+    }
+  }
+  return config;
+});
+
 let refreshInFlight: Promise<void> | undefined;
 
 api.interceptors.response.use(

@@ -191,12 +191,33 @@ async function main() {
     // may already be VIEWED after get — try interview transition if VIEWED
   }
   await req("GET", "/api/notifications", { jar: recruiter.jar });
+  await req("GET", "/api/settings", { jar: recruiter.jar });
+  await req("PATCH", "/api/settings", {
+    jar: recruiter.jar,
+    body: {
+      notifyNewApplication: true,
+      notifyJobModeration: true,
+      notifyInterviewReminder: true,
+      notifyWeeklyReport: false,
+    },
+  });
+  await req("GET", "/api/auth/sessions", { jar: recruiter.jar });
   await req("POST", "/api/auth/logout", { jar: recruiter.jar });
 
   // Admin
   const admin = await login("admin@demo.vn");
   await req("GET", "/api/auth/me", { jar: admin.jar });
   await req("GET", "/api/dashboard", { jar: admin.jar });
+  await req("GET", "/api/settings", { jar: admin.jar });
+  await req("PATCH", "/api/settings", {
+    jar: admin.jar,
+    body: {
+      notifyJobPending: true,
+      notifyRecruiterRegistered: true,
+      notifyBrowserSound: false,
+    },
+  });
+  await req("GET", "/api/auth/sessions", { jar: admin.jar });
   await req("GET", "/api/admin/jobs?page=1&pageSize=4&status=PENDING", {
     jar: admin.jar,
   });

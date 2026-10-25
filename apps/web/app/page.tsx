@@ -39,6 +39,12 @@ const ROLE_TABS: Array<{
   { id: "admin", label: "Quản trị viên", hint: "Vận hành", icon: UserCog },
 ];
 
+const DEMO_ACCOUNTS: Record<RoleTab, { email: string; password: string }> = {
+  candidate: { email: "candidate@demo.vn", password: "Demo@123456" },
+  recruiter: { email: "hr@vpay.demo", password: "Demo@123456" },
+  admin: { email: "admin@demo.vn", password: "Demo@123456" },
+};
+
 const FEATURES = [
   {
     title: "Xác thực doanh nghiệp",
@@ -66,13 +72,21 @@ const FEATURES = [
 export default function HomePage() {
   const router = useRouter();
   const [roleTab, setRoleTab] = useState<RoleTab>("candidate");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(DEMO_ACCOUNTS.candidate.email);
+  const [password, setPassword] = useState(DEMO_ACCOUNTS.candidate.password);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  function selectRole(tab: RoleTab) {
+    setRoleTab(tab);
+    setEmail(DEMO_ACCOUNTS[tab].email);
+    setPassword(DEMO_ACCOUNTS[tab].password);
+    setError("");
+    setMessage("");
+  }
 
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
@@ -277,7 +291,7 @@ export default function HomePage() {
                         type="button"
                         role="tab"
                         aria-selected={active}
-                        onClick={() => setRoleTab(tab.id)}
+                        onClick={() => selectRole(tab.id)}
                         className={`flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-center transition ${
                           active
                             ? "bg-white text-[#003C90] shadow-sm"
@@ -389,22 +403,24 @@ export default function HomePage() {
                   </button>
                 </form>
 
-                <p className="mt-5 text-center text-sm text-[#68758b]">
-                  Bạn chưa có tài khoản?{" "}
-                  <Link
-                    href="/register"
-                    className="font-semibold text-[#0F52BA] hover:text-[#003C90]"
-                  >
-                    Đăng ký Ứng viên
-                  </Link>
-                  <span className="mx-1.5 text-[#C3C6D5]">•</span>
-                  <Link
-                    href="/register/recruiter"
-                    className="font-semibold text-[#0F52BA] hover:text-[#003C90]"
-                  >
-                    Đăng ký Doanh nghiệp
-                  </Link>
-                </p>
+                <div className="mt-5 space-y-2 text-center text-sm text-[#68758b]">
+                  <p>Bạn chưa có tài khoản?</p>
+                  <p>
+                    <Link
+                      href="/register"
+                      className="font-semibold text-[#0F52BA] hover:text-[#003C90]"
+                    >
+                      Đăng ký Ứng viên
+                    </Link>
+                    <span className="mx-1.5 text-[#C3C6D5]">•</span>
+                    <Link
+                      href="/register/recruiter"
+                      className="font-semibold text-[#0F52BA] hover:text-[#003C90]"
+                    >
+                      Đăng ký Doanh nghiệp
+                    </Link>
+                  </p>
+                </div>
               </>
             )}
           </div>

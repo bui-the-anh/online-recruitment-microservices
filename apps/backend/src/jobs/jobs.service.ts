@@ -1069,11 +1069,29 @@ export class JobsService {
     actor: Actor;
     company: {
       name?: string;
-      description?: string;
-      website?: string;
-      industry?: string;
-      location?: string;
-      verificationDetails?: string;
+      brandName?: string | null;
+      legalName?: string | null;
+      description?: string | null;
+      website?: string | null;
+      industry?: string | null;
+      specialties?: string[] | null;
+      location?: string | null;
+      address?: string | null;
+      offices?: Array<{ label?: string; address?: string; city?: string }> | null;
+      taxCode?: string | null;
+      contactPhone?: string | null;
+      contactEmail?: string | null;
+      companySize?: string | null;
+      foundedYear?: number | null;
+      benefits?: string[] | null;
+      benefitsDetail?: Array<{ title?: string; description?: string }> | null;
+      cultureValues?: Array<{ title?: string; description?: string }> | null;
+      coverUrl?: string | null;
+      logoUrl?: string | null;
+      galleryUrls?: string[] | null;
+      verificationDetails?: string | null;
+      licenseDocumentUrl?: string | null;
+      licenseDocumentName?: string | null;
     };
   }) {
     await this.assertActiveRecruiter(input.actor);
@@ -1081,19 +1099,92 @@ export class JobsService {
     if (!name || name.length > 200) {
       throw new BadRequestException("Tên công ty là bắt buộc và không hợp lệ");
     }
+    const asStringArray = (value: unknown) =>
+      Array.isArray(value)
+        ? value
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : undefined;
+    const cultureValues = Array.isArray(input.company.cultureValues)
+      ? input.company.cultureValues
+          .filter((row) => row && typeof row.title === "string")
+          .map((row) => ({
+            title: String(row.title).trim(),
+            description: String(row.description || "").trim(),
+          }))
+          .filter((row) => row.title)
+      : undefined;
+    const benefitsDetail = Array.isArray(input.company.benefitsDetail)
+      ? input.company.benefitsDetail
+          .filter((row) => row && typeof row.title === "string")
+          .map((row) => ({
+            title: String(row.title).trim(),
+            description: String(row.description || "").trim(),
+          }))
+          .filter((row) => row.title)
+      : undefined;
+    const offices = Array.isArray(input.company.offices)
+      ? input.company.offices
+          .filter((row) => row && (row.address || row.city || row.label))
+          .map((row) => ({
+            label: String(row.label || "Văn phòng").trim(),
+            address: String(row.address || "").trim(),
+            city: String(row.city || "").trim(),
+          }))
+      : undefined;
+
     const data = {
       name,
-      description: input.company.description,
-      website: input.company.website,
-      industry: input.company.industry,
-      location: input.company.location,
-      verificationDetails: input.company.verificationDetails,
+      brandName: input.company.brandName?.trim() || null,
+      legalName: input.company.legalName?.trim() || null,
+      description: input.company.description?.trim() || null,
+      website: input.company.website?.trim() || null,
+      industry: input.company.industry?.trim() || null,
+      specialties: asStringArray(input.company.specialties) ?? undefined,
+      location: input.company.location?.trim() || null,
+      address: input.company.address?.trim() || null,
+      offices: offices ?? undefined,
+      taxCode: input.company.taxCode?.trim() || null,
+      contactPhone: input.company.contactPhone?.trim() || null,
+      contactEmail: input.company.contactEmail?.trim() || null,
+      companySize: input.company.companySize?.trim() || null,
+      foundedYear:
+        input.company.foundedYear != null && !Number.isNaN(Number(input.company.foundedYear))
+          ? Number(input.company.foundedYear)
+          : null,
+      benefits: asStringArray(input.company.benefits) ?? undefined,
+      benefitsDetail: benefitsDetail ?? undefined,
+      cultureValues: cultureValues ?? undefined,
+      coverUrl: input.company.coverUrl?.trim() || null,
+      logoUrl: input.company.logoUrl?.trim() || null,
+      galleryUrls: asStringArray(input.company.galleryUrls) ?? undefined,
+      verificationDetails: input.company.verificationDetails?.trim() || null,
+      licenseDocumentUrl: input.company.licenseDocumentUrl?.trim() || null,
+      licenseDocumentName: input.company.licenseDocumentName?.trim() || null,
     };
-    return this.prisma.company.upsert({
+
+    const cleaned = Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined),
+    );
+
+    const company = await this.prisma.company.upsert({
       where: { recruiterId: input.actor.id },
-      create: { ...data, recruiterId: input.actor.id },
-      update: data,
+      create: { ...cleaned, name, recruiterId: input.actor.id },
+      update: cleaned,
+      include: {
+        recruiter: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            verificationStatus: true,
+            accountStatus: true,
+          },
+        },
+      },
     });
+    return this.mapRecruiterCompany(company);
   }
 
   async getCompany(actor: Actor) {
@@ -1101,9 +1192,126 @@ export class JobsService {
       throw new ForbiddenException("Chỉ nhà tuyển dụng mới có thể xem hồ sơ công ty");
     }
     await this.assertActiveRecruiter(actor);
-    return this.prisma.company.findUnique({
+    const company = await this.prisma.company.findUnique({
       where: { recruiterId: actor.id },
+      include: {
+        recruiter: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            verificationStatus: true,
+            accountStatus: true,
+          },
+        },
+        _count: { select: { jobs: true } },
+      },
     });
+    if (!company) return null;
+    return this.mapRecruiterCompany(company);
+  }
+
+  private mapRecruiterCompany(company: {
+    id: string;
+    name: string;
+    brandName?: string | null;
+    legalName?: string | null;
+    description: string | null;
+    website: string | null;
+    industry: string | null;
+    specialties?: unknown;
+    location: string | null;
+    address: string | null;
+    offices?: unknown;
+    taxCode: string | null;
+    contactPhone: string | null;
+    contactEmail?: string | null;
+    companySize: string | null;
+    foundedYear: number | null;
+    followersCount: number;
+    rating: unknown;
+    reviewCount: number;
+    benefits: unknown;
+    benefitsDetail: unknown;
+    responseRate: unknown;
+    avgResponseDays: unknown;
+    coverUrl: string | null;
+    logoUrl?: string | null;
+    galleryUrls: unknown;
+    metrics: unknown;
+    cultureValues: unknown;
+    team: unknown;
+    featured: boolean;
+    verificationDetails: string | null;
+    licenseDocumentUrl: string | null;
+    licenseDocumentName: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    recruiter?: {
+      id: string;
+      fullName: string;
+      email: string;
+      verificationStatus: VerificationStatus | null;
+      accountStatus: AccountStatus;
+    } | null;
+    _count?: { jobs: number };
+  }) {
+    const asArray = <T>(value: unknown): T[] =>
+      Array.isArray(value) ? (value as T[]) : [];
+    const completionChecks = [
+      Boolean(company.logoUrl || company.coverUrl),
+      Boolean(company.description?.trim()),
+      Boolean(company.licenseDocumentUrl),
+      asArray(company.benefits).length > 0 ||
+        asArray(company.benefitsDetail).length > 0,
+      asArray(company.galleryUrls).length > 0,
+      Boolean(company.address || company.location),
+    ];
+    const completionScore = Math.round(
+      (completionChecks.filter(Boolean).length / completionChecks.length) * 100,
+    );
+    return {
+      ...company,
+      brandName: company.brandName || company.name,
+      legalName: company.legalName || company.name,
+      specialties: asArray<string>(company.specialties),
+      offices: asArray<{ label?: string; address?: string; city?: string }>(
+        company.offices,
+      ),
+      benefits: asArray<string>(company.benefits),
+      benefitsDetail: asArray<{ title: string; description?: string }>(
+        company.benefitsDetail,
+      ),
+      cultureValues: asArray<{ title: string; description?: string }>(
+        company.cultureValues,
+      ),
+      galleryUrls: asArray<string>(company.galleryUrls),
+      metrics: asArray<{ label: string; value: string }>(company.metrics),
+      team: asArray<{ name: string; title?: string; email?: string }>(
+        company.team,
+      ),
+      rating: company.rating != null ? Number(company.rating) : null,
+      responseRate:
+        company.responseRate != null ? Number(company.responseRate) : null,
+      avgResponseDays:
+        company.avgResponseDays != null
+          ? Number(company.avgResponseDays)
+          : null,
+      verified:
+        company.recruiter?.verificationStatus === VerificationStatus.VERIFIED,
+      jobsCount: company._count?.jobs ?? 0,
+      completionScore,
+      completion: {
+        branding: Boolean(company.logoUrl || company.coverUrl),
+        description: Boolean(company.description?.trim()),
+        legal: Boolean(company.licenseDocumentUrl),
+        benefits:
+          asArray(company.benefits).length > 0 ||
+          asArray(company.benefitsDetail).length > 0,
+        gallery: asArray(company.galleryUrls).length > 0,
+        location: Boolean(company.address || company.location),
+      },
+    };
   }
 
   async create(input: { actor: Actor; job: JobInput }) {

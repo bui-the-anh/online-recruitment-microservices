@@ -32,7 +32,10 @@ import { Actor, startHttpApplication } from "./common/bootstrap";
 import { AuthenticatedRequest } from "./common/guards";
 import { toHttpException } from "./common/rpc-error";
 import { PrismaService } from "./prisma/prisma.service";
-import { uploadCvToSupabase } from "./common/supabase-storage";
+import {
+  uploadAssetToSupabase,
+  uploadCvToSupabase,
+} from "./common/supabase-storage";
 
 type UploadedCvFile = {
   originalname: string;
@@ -46,7 +49,22 @@ const CV_MIME = new Set([
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
+const IMAGE_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
 const CV_MAX_BYTES = 5 * 1024 * 1024;
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+function clientIp(request: AuthenticatedRequest): string | undefined {
+  const forwarded = request.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0]?.trim();
+  }
+  return request.ip || request.socket?.remoteAddress || undefined;
+}
 
 @Controller()
 export class GatewayController {
@@ -110,13 +128,33 @@ export class GatewayController {
   @Get("health")
   async health() {
     await this.prisma.$queryRaw`SELECT 1`;
-    const services = await Promise.all([
-      this.request(this.auth, { cmd: "health" }, {}, 2000),
-      this.request(this.jobs, { cmd: "health" }, {}, 2000),
-      this.request(this.applications, { cmd: "health" }, {}, 2000),
-      this.request(this.notifications, { cmd: "health" }, {}, 2000),
-    ]);
-    return { status: "ok", database: "connected", services };
+    const names = ["auth", "jobs", "applications", "notifications"] as const;
+    const clients = [
+      this.auth,
+      this.jobs,
+      this.applications,
+      this.notifications,
+    ] as const;
+    const settled = await Promise.all(
+      clients.map(async (client, index) => {
+        try {
+          const result = await this.request(client, { cmd: "health" }, {}, 3000);
+          return { name: names[index], ok: true, result };
+        } catch (error) {
+          return {
+            name: names[index],
+            ok: false,
+            error: error instanceof Error ? error.message : "unavailable",
+          };
+        }
+      }),
+    );
+    const allOk = settled.every((row) => row.ok);
+    return {
+      status: allOk ? "ok" : "degraded",
+      database: "connected",
+      services: settled,
+    };
   }
 
   @Public()
@@ -137,6 +175,7 @@ export class GatewayController {
   @Public()
   @Post("api/auth/login")
   async login(
+    @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
@@ -144,7 +183,11 @@ export class GatewayController {
       user: unknown;
       accessToken: string;
       refreshToken: string;
-    }>(this.auth, { cmd: "auth.login" }, body);
+    }>(this.auth, { cmd: "auth.login" }, {
+      ...(typeof body === "object" && body ? body : {}),
+      userAgent: request.headers["user-agent"],
+      ipAddress: clientIp(request),
+    });
     this.setSessionCookies(response, session);
     return { user: session.user };
   }
@@ -159,13 +202,73 @@ export class GatewayController {
       user: unknown;
       accessToken: string;
       refreshToken: string;
-    }>(
-      this.auth,
-      { cmd: "auth.refresh" },
-      { refreshToken: request.cookies?.refresh_token },
-    );
+    }>(this.auth, { cmd: "auth.refresh" }, {
+      refreshToken: request.cookies?.refresh_token,
+      userAgent: request.headers["user-agent"],
+      ipAddress: clientIp(request),
+    });
     this.setSessionCookies(response, session);
     return { user: session.user };
+  }
+
+  @Roles(Role.ADMIN, Role.RECRUITER, Role.CANDIDATE)
+  @Get("api/settings")
+  getSettings(@Req() request: AuthenticatedRequest) {
+    return this.request(this.auth, { cmd: "auth.settings.get" }, this.actor(request));
+  }
+
+  @Roles(Role.ADMIN, Role.RECRUITER, Role.CANDIDATE)
+  @Patch("api/settings")
+  updateSettings(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.request(this.auth, { cmd: "auth.settings.update" }, {
+      actor: this.actor(request),
+      update: body,
+    });
+  }
+
+  @Roles(Role.ADMIN, Role.RECRUITER, Role.CANDIDATE)
+  @Post("api/auth/change-password")
+  changePassword(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.request(this.auth, { cmd: "auth.password.change" }, {
+      actor: this.actor(request),
+      update: body,
+    });
+  }
+
+  @Roles(Role.ADMIN, Role.RECRUITER, Role.CANDIDATE)
+  @Get("api/auth/sessions")
+  listSessions(@Req() request: AuthenticatedRequest) {
+    return this.request(this.auth, { cmd: "auth.sessions.list" }, {
+      actor: this.actor(request),
+      refreshToken: request.cookies?.refresh_token,
+    });
+  }
+
+  @Roles(Role.ADMIN, Role.RECRUITER, Role.CANDIDATE)
+  @Post("api/auth/sessions/revoke-others")
+  revokeOtherSessions(@Req() request: AuthenticatedRequest) {
+    return this.request(this.auth, { cmd: "auth.sessions.revoke-others" }, {
+      actor: this.actor(request),
+      refreshToken: request.cookies?.refresh_token,
+    });
+  }
+
+  @Roles(Role.ADMIN, Role.RECRUITER, Role.CANDIDATE)
+  @Post("api/auth/sessions/:id/revoke")
+  revokeSession(
+    @Req() request: AuthenticatedRequest,
+    @Param("id") id: string,
+  ) {
+    return this.request(this.auth, { cmd: "auth.sessions.revoke" }, {
+      actor: this.actor(request),
+      id,
+    });
   }
 
   @Public()
@@ -361,6 +464,74 @@ export class GatewayController {
         unlinkSync(file.path);
       } catch {
         // ignore cleanup errors
+      }
+    }
+  }
+
+  @Roles(Role.RECRUITER)
+  @Post("api/uploads/company")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      dest: join(process.cwd(), "uploads"),
+      limits: { fileSize: IMAGE_MAX_BYTES },
+      fileFilter: (_request, file, callback) => {
+        if (!IMAGE_MIME.has(file.mimetype) && !CV_MIME.has(file.mimetype)) {
+          callback(
+            new BadRequestException(
+              "Chỉ chấp nhận ảnh (JPG/PNG/WEBP) hoặc PDF giấy phép",
+            ) as unknown as Error,
+            false,
+          );
+          return;
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async uploadCompanyAsset(
+    @Req() request: AuthenticatedRequest,
+    @UploadedFile() file?: UploadedCvFile,
+    @Query("kind") kind?: string,
+  ) {
+    if (!file?.path) {
+      throw new BadRequestException("Vui lòng chọn tệp để tải lên");
+    }
+    const uploadsDir = join(process.cwd(), "uploads");
+    if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+    const folderKind =
+      kind === "logo"
+        ? "logo"
+        : kind === "gallery"
+          ? "gallery"
+          : kind === "license"
+            ? "license"
+            : "cover";
+    try {
+      const buffer = readFileSync(file.path);
+      if (!buffer.length) {
+        throw new BadRequestException("Tệp trống");
+      }
+      const uploaded = await uploadAssetToSupabase({
+        buffer,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        folder: `companies/${this.actor(request).id}/${folderKind}`,
+      });
+      return {
+        url: uploaded.url,
+        path: uploaded.path,
+        bucket: uploaded.bucket,
+        kind: folderKind,
+        fileName: file.originalname,
+        size: file.size,
+        mimeType: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      };
+    } finally {
+      try {
+        unlinkSync(file.path);
+      } catch {
+        // ignore
       }
     }
   }

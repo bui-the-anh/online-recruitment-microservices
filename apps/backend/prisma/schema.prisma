@@ -67,6 +67,7 @@ model User {
 
   candidateProfile CandidateProfile?
   company          Company?
+  settings         UserSettings?
   jobs             Job[]                @relation("JobRecruiter")
   applications     Application[]        @relation("CandidateApplications")
   notifications    Notification[]
@@ -75,6 +76,24 @@ model User {
   refreshTokens    RefreshToken[]
 
   @@map("users")
+}
+
+model UserSettings {
+  id                        String   @id @default(uuid()) @db.Uuid
+  userId                    String   @unique @map("user_id") @db.Uuid
+  notifyJobPending          Boolean  @default(true) @map("notify_job_pending")
+  notifyRecruiterRegistered Boolean  @default(true) @map("notify_recruiter_registered")
+  notifyBrowserSound        Boolean  @default(false) @map("notify_browser_sound")
+  notifyNewApplication      Boolean  @default(true) @map("notify_new_application")
+  notifyJobModeration       Boolean  @default(true) @map("notify_job_moderation")
+  notifyInterviewReminder   Boolean  @default(true) @map("notify_interview_reminder")
+  notifyWeeklyReport        Boolean  @default(false) @map("notify_weekly_report")
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
 }
 
 model CandidateProfile {
@@ -103,13 +122,18 @@ model Company {
   id                  String   @id @default(uuid()) @db.Uuid
   recruiterId         String   @unique @map("recruiter_id") @db.Uuid
   name                String   @db.VarChar(200)
+  brandName           String?  @map("brand_name") @db.VarChar(200)
+  legalName           String?  @map("legal_name") @db.VarChar(300)
   description         String?  @db.Text
   website             String?  @db.VarChar(500)
   industry            String?  @db.VarChar(120)
+  specialties         Json?
   location            String?  @db.VarChar(160)
   address             String?  @db.VarChar(240)
+  offices             Json?
   taxCode             String?  @map("tax_code") @db.VarChar(32)
   contactPhone        String?  @map("contact_phone") @db.VarChar(32)
+  contactEmail        String?  @map("contact_email") @db.VarChar(320)
   companySize         String?  @map("company_size") @db.VarChar(80)
   foundedYear         Int?     @map("founded_year")
   followersCount      Int      @default(0) @map("followers_count")
@@ -120,6 +144,7 @@ model Company {
   responseRate        Decimal? @map("response_rate") @db.Decimal(5, 2)
   avgResponseDays     Decimal? @map("avg_response_days") @db.Decimal(4, 1)
   coverUrl            String?  @map("cover_url") @db.VarChar(500)
+  logoUrl             String?  @map("logo_url") @db.VarChar(500)
   galleryUrls         Json?    @map("gallery_urls")
   metrics             Json?
   cultureValues       Json?    @map("culture_values")
@@ -234,12 +259,15 @@ model AuditLog {
 
 
 model RefreshToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash") @db.Char(64)
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash") @db.Char(64)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent   String?   @map("user_agent") @db.VarChar(500)
+  ipAddress   String?   @map("ip_address") @db.VarChar(64)
+  deviceLabel String?   @map("device_label") @db.VarChar(160)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

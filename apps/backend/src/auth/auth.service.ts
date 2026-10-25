@@ -86,7 +86,12 @@ export class AuthService {
     return this.issueSession(user);
   }
 
-  async login(input: { email?: string; password?: string }) {
+  async login(input: {
+    email?: string;
+    password?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }) {
     const email = input.email?.trim().toLowerCase();
     if (!email || !input.password) {
       throw new BadRequestException("Vui lòng nhập email và mật khẩu");
@@ -98,10 +103,18 @@ export class AuthService {
     if (user.accountStatus !== AccountStatus.ACTIVE) {
       throw new UnauthorizedException("Tài khoản này đang bị tạm khóa");
     }
-    return this.issueSession(user);
+    return this.issueSession(user, {
+      userAgent: input.userAgent,
+      ipAddress: input.ipAddress,
+    });
   }
 
-  async refresh(rawToken?: string) {
+  async refresh(input: {
+    refreshToken?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }) {
+    const rawToken = input.refreshToken;
     if (!rawToken) {
       throw new UnauthorizedException("Phiên đăng nhập đã hết hạn");
     }
@@ -131,7 +144,10 @@ export class AuthService {
     if (!user || user.accountStatus !== AccountStatus.ACTIVE) {
       throw new UnauthorizedException("Tài khoản không hoạt động");
     }
-    return this.issueSession(user);
+    return this.issueSession(user, {
+      userAgent: input.userAgent || stored.userAgent || undefined,
+      ipAddress: input.ipAddress || stored.ipAddress || undefined,
+    });
   }
 
   async logout(rawToken?: string) {
@@ -763,6 +779,191 @@ export class AuthService {
     return updated;
   }
 
+  async getSettings(actor: Actor) {
+    const settings = await this.ensureSettings(actor.id);
+    return this.publicSettings(settings);
+  }
+
+  async updateSettings(
+    actor: Actor,
+    update: {
+      notifyJobPending?: boolean;
+      notifyRecruiterRegistered?: boolean;
+      notifyBrowserSound?: boolean;
+      notifyNewApplication?: boolean;
+      notifyJobModeration?: boolean;
+      notifyInterviewReminder?: boolean;
+      notifyWeeklyReport?: boolean;
+    },
+  ) {
+    await this.ensureSettings(actor.id);
+    const bool = (value: unknown) => typeof value === "boolean";
+    const settings = await this.prisma.userSettings.update({
+      where: { userId: actor.id },
+      data: {
+        ...(bool(update.notifyJobPending)
+          ? { notifyJobPending: update.notifyJobPending }
+          : {}),
+        ...(bool(update.notifyRecruiterRegistered)
+          ? { notifyRecruiterRegistered: update.notifyRecruiterRegistered }
+          : {}),
+        ...(bool(update.notifyBrowserSound)
+          ? { notifyBrowserSound: update.notifyBrowserSound }
+          : {}),
+        ...(bool(update.notifyNewApplication)
+          ? { notifyNewApplication: update.notifyNewApplication }
+          : {}),
+        ...(bool(update.notifyJobModeration)
+          ? { notifyJobModeration: update.notifyJobModeration }
+          : {}),
+        ...(bool(update.notifyInterviewReminder)
+          ? { notifyInterviewReminder: update.notifyInterviewReminder }
+          : {}),
+        ...(bool(update.notifyWeeklyReport)
+          ? { notifyWeeklyReport: update.notifyWeeklyReport }
+          : {}),
+      },
+    });
+    return this.publicSettings(settings);
+  }
+
+  async changePassword(
+    actor: Actor,
+    input: {
+      currentPassword?: string;
+      newPassword?: string;
+    },
+  ) {
+    const currentPassword = input.currentPassword || "";
+    const newPassword = input.newPassword || "";
+    if (!currentPassword) {
+      throw new BadRequestException("Vui lòng nhập mật khẩu hiện tại");
+    }
+    if (
+      newPassword.length < 8 ||
+      !/[A-Z]/.test(newPassword) ||
+      !/[a-z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) ||
+      !/[^A-Za-z0-9]/.test(newPassword)
+    ) {
+      throw new BadRequestException(
+        "Mật khẩu mới cần ≥8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt",
+      );
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: actor.id } });
+    if (!user) throw new NotFoundException("Không tìm thấy tài khoản");
+    if (!(await compare(currentPassword, user.passwordHash))) {
+      throw new BadRequestException("Mật khẩu hiện tại không đúng");
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await hash(newPassword, 12) },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: actor.id,
+        action: "PASSWORD_CHANGED",
+        entityType: "User",
+        entityId: actor.id,
+      },
+    });
+    return { message: "Đã cập nhật mật khẩu thành công" };
+  }
+
+  async listSessions(actor: Actor, currentRefreshToken?: string) {
+    const currentHash = currentRefreshToken
+      ? this.hashToken(currentRefreshToken)
+      : null;
+    const rows = await this.prisma.refreshToken.findMany({
+      where: {
+        userId: actor.id,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        current: currentHash != null && row.tokenHash === currentHash,
+        deviceLabel: row.deviceLabel || this.deviceLabelFromUa(row.userAgent),
+        userAgent: row.userAgent,
+        ipAddress: row.ipAddress,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      })),
+    };
+  }
+
+  async revokeSession(actor: Actor, sessionId: string) {
+    const updated = await this.prisma.refreshToken.updateMany({
+      where: { id: sessionId, userId: actor.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (updated.count !== 1) {
+      throw new NotFoundException("Không tìm thấy phiên đăng nhập");
+    }
+    return { message: "Đã đăng xuất thiết bị" };
+  }
+
+  async revokeOtherSessions(actor: Actor, currentRefreshToken?: string) {
+    if (!currentRefreshToken) {
+      throw new BadRequestException("Không xác định được phiên hiện tại");
+    }
+    const currentHash = this.hashToken(currentRefreshToken);
+    const result = await this.prisma.refreshToken.updateMany({
+      where: {
+        userId: actor.id,
+        revokedAt: null,
+        NOT: { tokenHash: currentHash },
+      },
+      data: { revokedAt: new Date() },
+    });
+    return { message: "Đã đăng xuất các thiết bị khác", count: result.count };
+  }
+
+  private publicSettings(settings: {
+    notifyJobPending: boolean;
+    notifyRecruiterRegistered: boolean;
+    notifyBrowserSound: boolean;
+    notifyNewApplication: boolean;
+    notifyJobModeration: boolean;
+    notifyInterviewReminder: boolean;
+    notifyWeeklyReport: boolean;
+    updatedAt: Date;
+  }) {
+    return {
+      notifyJobPending: settings.notifyJobPending,
+      notifyRecruiterRegistered: settings.notifyRecruiterRegistered,
+      notifyBrowserSound: settings.notifyBrowserSound,
+      notifyNewApplication: settings.notifyNewApplication,
+      notifyJobModeration: settings.notifyJobModeration,
+      notifyInterviewReminder: settings.notifyInterviewReminder,
+      notifyWeeklyReport: settings.notifyWeeklyReport,
+      updatedAt: settings.updatedAt,
+    };
+  }
+
+  private async ensureSettings(userId: string) {
+    return this.prisma.userSettings.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
+    });
+  }
+
+  private deviceLabelFromUa(userAgent?: string | null) {
+    const ua = userAgent || "";
+    if (/iPhone/i.test(ua)) return "iPhone";
+    if (/iPad/i.test(ua)) return "iPad";
+    if (/Android/i.test(ua)) return "Android";
+    if (/Macintosh|Mac OS/i.test(ua)) return "Mac";
+    if (/Windows/i.test(ua)) return "Windows PC";
+    if (/Linux/i.test(ua)) return "Linux";
+    return "Trình duyệt web";
+  }
+
   private async issueSession(
     user: Pick<
       User,
@@ -773,13 +974,18 @@ export class AuthService {
       | "accountStatus"
       | "verificationStatus"
     >,
+    meta?: { userAgent?: string; ipAddress?: string },
   ) {
     const refreshToken = randomBytes(48).toString("base64url");
+    const userAgent = meta?.userAgent?.slice(0, 500) || null;
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash: this.hashToken(refreshToken),
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        userAgent,
+        ipAddress: meta?.ipAddress?.slice(0, 64) || null,
+        deviceLabel: this.deviceLabelFromUa(userAgent),
       },
     });
     return {
