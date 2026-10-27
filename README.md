@@ -338,6 +338,11 @@ bật polling). PostgreSQL = **Supabase cloud** (không chạy Postgres trong
 Compose). Kafka trong Compose = `apache/kafka` (`careerlink-kafka`). Upload CV /
 ảnh công ty → Supabase Storage.
 
+**Lỗi `P1001 Can't reach database server ...:6543`:** thường do project Supabase
+free bị **pause** sau vài ngày không dùng. Vào Dashboard → **Restore project**,
+đợi 1–2 phút, rồi `docker compose up -d`. URL trong `.env` nên có
+`connect_timeout=30&pool_timeout=30&sslmode=require`.
+
 ### 6.2 Biến môi trường chính
 
 | Biến | Mục đích |

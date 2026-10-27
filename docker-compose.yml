@@ -7,6 +7,10 @@ x-backend: &backend-base
     dockerfile: Dockerfile.dev
   env_file:
     - .env
+  # Stable DNS for Supabase pooler from Docker Desktop (avoids intermittent P1001)
+  dns:
+    - 8.8.8.8
+    - 1.1.1.1
   environment: &backend-env
     KAFKA_BROKERS: kafka:9092
     TCP_BIND_HOST: "0.0.0.0"
