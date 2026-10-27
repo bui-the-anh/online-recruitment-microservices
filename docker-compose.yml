@@ -33,6 +33,8 @@ x-backend: &backend-base
     kafka:
       condition: service_healthy
   restart: unless-stopped
+  # Nest --watch thường bỏ qua SIGTERM → Docker mặc định chờ rất lâu khi recreate
+  stop_grace_period: 8s
 
 services:
   kafka:

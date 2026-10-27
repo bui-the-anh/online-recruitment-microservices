@@ -331,12 +331,18 @@ docker compose logs -f
 | API Gateway | http://localhost:3001 |
 | Health | http://localhost:3001/health |
 
-Dừng: `docker compose down`.
+Dừng: `docker compose down` (hoặc `docker compose down -t 5` nếu container Nest
+treo ở trạng thái **Stopping**).
 
 Sửa code trong `apps/web` / `apps/backend/src` → container tự reload (Windows đã
 bật polling). PostgreSQL = **Supabase cloud** (không chạy Postgres trong
 Compose). Kafka trong Compose = `apache/kafka` (`careerlink-kafka`). Upload CV /
 ảnh công ty → Supabase Storage.
+
+**Lần đầu trên máy mới** có thể mất vài phút vì phải `pull` image Kafka +
+`build` Dockerfile + cài `node_modules` trong volume. Các lần sau nhanh hơn.
+Nếu `up -d` kẹt dòng **Stopping** vài phút: mở terminal khác chạy
+`docker compose kill` rồi `docker compose up -d`.
 
 **Lỗi `P1001 Can't reach database server ...:6543`:** thường do project Supabase
 free bị **pause** sau vài ngày không dùng. Vào Dashboard → **Restore project**,
